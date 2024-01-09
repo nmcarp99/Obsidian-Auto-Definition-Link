@@ -3,8 +3,46 @@ import { singular } from "pluralize";
 
 // make sure last key pressed is space, make sure the cursor is right after the found one
 
-function getBlockIds(inputString: string): string[] {
-    return Array.from(inputString.matchAll(/ \^([a-zA-Z0-9-]+$)/gm)).map((match) => match[1]);
+async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[]> {
+    const blockIds: string[] = [];
+
+    const filePromises: Promise<void>[] = [];
+
+    function processFileContents(contents: string, path: string) {
+        const matches = contents.matchAll(/ \^([a-zA-Z0-9-]+$)/gm);
+
+        Array.from(matches).forEach((match) => {
+            blockIds.push(path + '#^' + match[1]);
+        });
+    }
+
+    const activeFile = app.workspace.getActiveFile();
+
+    app.vault.getMarkdownFiles()
+        // .filter(file => file.parent?.path === activeFile?.parent?.path)
+        .forEach((file) => {
+            console.log(file.parent?.path, activeFile?.parent?.path);
+            filePromises.push(new Promise((resolve) => {
+                // if the file is the active file, use the editor contents instead of reading the file
+                if (file.path == activeFile?.path) {
+                    processFileContents(editor.getValue(), file.path);
+
+                    resolve();
+                    return;
+                }
+
+                app.vault.read(file)
+                    .then((contents) => {
+                        processFileContents(contents, file.path);
+
+                        resolve();
+                    });
+            }));
+        });
+
+    await Promise.all(filePromises); // wait for all files to be read
+
+    return blockIds;
 }
 
 function normalizeId(id: string): string {
@@ -23,12 +61,12 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         super(app);
     }
 
-    getSuggestions(context: EditorSuggestContext): SuggestionData[] {
-        const blockIds = getBlockIds(context.editor.getValue());
-
+    async getSuggestions(context: EditorSuggestContext): Promise<SuggestionData[]> {
         const suggestions: SuggestionData[] = [];
 
-        blockIds.forEach((blockId) => { // loop through each definition in file
+        AutoDefinitionLink.blockIds.forEach((blockPath) => { // loop through each definition in file
+            const blockId = blockPath.split('#^')[1];
+
             // number of terms in the block id
             const numTermsInBlockId = blockId.split(/[ -]/).length;
 
@@ -44,7 +82,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
 
             suggestions.push({
                 text: substr,
-                id: blockId,
+                id: blockPath,
                 cursor: context.editor.getCursor(),
                 numTerms: numTermsInBlockId,
             });
@@ -61,14 +99,19 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         if (originalLine.length === 0) return null;
         console.debug('original line not empty');
 
-        if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) return null;
+
+        if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
+            (async () => {
+                AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor);
+                console.debug('block ids updated');
+                console.debug(AutoDefinitionLink.blockIds);
+            })();
+
+            return null; // cancel if editing a term
+        }
 
         // if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return null; // TODO space setting
         // console.debug('space found');
-
-        const blockIds = getBlockIds(editor.getValue());
-
-        if (blockIds.length === 0) return null;
 
         // text representing the valid text for a blockid directly before the cursor
         const possibleBlockIdContainingStr = (originalLine.substring(0, cursor.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0]; // TODO space setting
@@ -81,7 +124,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     }
 
     renderSuggestion(item: SuggestionData, el: HTMLElement): void {
-        el.setText(item.text);
+        el.setText(item.id.split("#^")[0] + '-' + item.text);
     }
 
     selectSuggestion(item: SuggestionData, evt: MouseEvent | KeyboardEvent): void {
@@ -94,46 +137,69 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         // if shift is pressed, insert the actual name of the block
         // if (evt.shiftKey) return editor.replaceRange(`[[#^${item.id}|${item.id}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
 
-        editor.replaceRange(`[[#^${item.id}|${item.text}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
+        let link = item.id;
+
+        if (this.app.workspace.getActiveFile()?.path === item.id.split('#^')[0]) link = '#^' + item.id.split('#^')[1];
+
+        editor.replaceRange(`[[${link}|${item.text}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
     }
 }
 
 export default class AutoDefinitionLink extends Plugin {
+    public static blockIds: string[] = [];
+
     onload(): void {
-        this.registerEditorSuggest(new AutoDefinitionLinkSuggest(this.app))
+        const autoDefinitionLinkSuggest = new AutoDefinitionLinkSuggest(this.app);
+        this.registerEditorSuggest(autoDefinitionLinkSuggest);
 
-        return;
+        (async () => {
+            const editor = this.app.workspace.activeEditor?.editor;
 
-        this.registerEvent(
-            this.app.workspace.on('editor-change', (editor) => {
-                const cursorPos = editor.getCursor();
-                const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
-                const originalLine = editor.getLine(cursorPos.line);
+            if (!editor) return;
 
-                if (originalLine.length === 0) return;
+            AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor)
+        })();
 
-                if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
+        // this.registerDomEvent(document, 'focus', (evt: FocusEvent) => {
+        //     console.log('onfocus');
 
-                const blockIds = getBlockIds(editor.getValue());
+        //     const editor = this.app.workspace.activeEditor?.editor;
 
-                if (blockIds.length === 0) return;
+        //     if (!editor) return;
 
-                blockIds.forEach((blockId) => { // loop through each definition in file
-                    // text representing the valid text for a blockid directly before the cursor
-                    const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
+        //     console.log('focus');
+        // });
 
-                    // number of terms in the block id
-                    const numTermsInBlockId = blockId.split(/[ -]/).length;
+        // this.registerEvent(
+        //     this.app.workspace.on('editor-change', (editor) => {
+        //         const cursorPos = editor.getCursor();
+        //         const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
+        //         const originalLine = editor.getLine(cursorPos.line);
 
-                    // select text going backwards for the number of terms in the block id
-                    const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
+        //         if (originalLine.length === 0) return;
 
-                    if (normalizeId(substr) === normalizeId(blockId)) {
-                        editor.replaceRange(`[[#^${blockId}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
-                        return;
-                    }
-                });
-            })
-        );
+        //         if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
+
+        //         const blockIds = getBlockIds(this.app.vault);
+
+        //         if (blockIds.length === 0) return;
+
+        //         blockIds.forEach((blockId) => { // loop through each definition in file
+        //             // text representing the valid text for a blockid directly before the cursor
+        //             const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
+
+        //             // number of terms in the block id
+        //             const numTermsInBlockId = blockId.split(/[ -]/).length;
+
+        //             // select text going backwards for the number of terms in the block id
+        //             const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
+
+        //             if (normalizeId(substr) === normalizeId(blockId)) {
+        //                 editor.replaceRange(`[[#^${blockId}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
+        //                 return;
+        //             }
+        //         });
+        //     })
+        // );
     }
 }
