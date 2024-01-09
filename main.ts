@@ -61,6 +61,8 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         if (originalLine.length === 0) return null;
         console.debug('original line not empty');
 
+        if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) return null;
+
         // if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return null; // TODO space setting
         // console.debug('space found');
 
