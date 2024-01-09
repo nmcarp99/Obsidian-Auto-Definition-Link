@@ -1,7 +1,7 @@
 {
 	"id": "auto-definition-link",
 	"name": "Auto Definition Link",
-	"version": "1.0.2",
+	"version": "2.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "Automatically converts text to definition links within the current file when you type them.",
 	"author": "Nolan Carpenter",
