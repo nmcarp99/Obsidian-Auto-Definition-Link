@@ -19,9 +19,9 @@ async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[
     const activeFile = app.workspace.getActiveFile();
 
     app.vault.getMarkdownFiles()
-        // .filter(file => file.parent?.path === activeFile?.parent?.path)
         .forEach((file) => {
-            console.log(file.parent?.path, activeFile?.parent?.path);
+            if (file.parent?.path !== activeFile?.parent?.path) return; // skip if the file is in not the same folder as the active file
+
             filePromises.push(new Promise((resolve) => {
                 // if the file is the active file, use the editor contents instead of reading the file
                 if (file.path == activeFile?.path) {
