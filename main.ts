@@ -4,8 +4,6 @@ import { singular } from "pluralize";
 // make sure last key pressed is space, make sure the cursor is right after the found one
 
 export default class MyPlugin extends Plugin {
-    lastKey: string;
-
     getBlockIds(inputString: string): string[] {
         return Array.from(inputString.matchAll(/ \^([a-zA-Z0-9-]+$)/gm)).map((match) => match[1]);
     }
@@ -15,16 +13,14 @@ export default class MyPlugin extends Plugin {
     }
 
     onload(): void {
-        document.addEventListener('keydown', (event) => {
-            this.lastKey = event.key;
-        });
-
         this.registerEvent(
             this.app.workspace.on('editor-change', (editor) => {
-                if (this.lastKey !== ' ') return;
-
                 const cursorPos = editor.getCursor();
                 const originalLine = editor.getLine(cursorPos.line);
+
+                if (originalLine.length === 0) return;
+
+                if (originalLine.charAt(originalLine.length - 1) !== ' ') return;
 
                 const blockIds = this.getBlockIds(editor.getValue());
 
