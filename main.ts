@@ -16,19 +16,18 @@ export default class MyPlugin extends Plugin {
         this.registerEvent(
             this.app.workspace.on('editor-change', (editor) => {
                 const cursorPos = editor.getCursor();
+                const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
                 const originalLine = editor.getLine(cursorPos.line);
 
                 if (originalLine.length === 0) return;
 
-                if (originalLine.charAt(originalLine.length - 1) !== ' ') return;
+                if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
 
                 const blockIds = this.getBlockIds(editor.getValue());
 
                 if (blockIds.length === 0) return;
 
                 blockIds.forEach((blockId) => { // loop through each definition in file
-                    const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
-
                     // text representing the valid text for a blockid directly before the cursor
                     const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
 
