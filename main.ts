@@ -1,7 +1,15 @@
-import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, TFile } from "obsidian";
+import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
 import { singular } from "pluralize";
 
 // make sure last key pressed is space, make sure the cursor is right after the found one
+
+interface AutoDefinitionLinkSettings {
+    useSuggestions: boolean;
+}
+
+const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
+    useSuggestions: false,
+}
 
 async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[]> {
     const blockIds: string[] = [];
@@ -73,8 +81,6 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
             // select text going backwards for the number of terms in the block id
             const substr = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
 
-            console.debug(substr);
-
             if (normalizeId(substr) !== normalizeId(blockId)) return;
 
             // const cursorPos = context.editor.getCursor(); TODO space setting (also change suggestions.push to use cursorPosBeforeSpace)
@@ -92,20 +98,16 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
+        if (!AutoDefinitionLink.settings.useSuggestions) return null;
+
         // const cursorPos = cursor;
         // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
         const originalLine = editor.getLine(cursor.line);
 
         if (originalLine.length === 0) return null;
-        console.debug('original line not empty');
-
 
         if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
-            (async () => {
-                AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor);
-                console.debug('block ids updated');
-                console.debug(AutoDefinitionLink.blockIds);
-            })();
+            (async () => AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor))();
 
             return null; // cancel if editing a term
         }
@@ -145,61 +147,123 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     }
 }
 
+class AutoDefinitionLinkSettingTab extends PluginSettingTab {
+    plugin: AutoDefinitionLink;
+
+    constructor(app: App, plugin: AutoDefinitionLink) {
+        super(app, plugin);
+        this.plugin = plugin;
+    }
+
+    display(): void {
+        const { containerEl } = this;
+
+        containerEl.empty();
+
+        containerEl.createEl('h2', { text: 'Auto Definition Link Settings' });
+
+        new Setting(containerEl)
+            .setName('Use Suggestions')
+            .setDesc('If disabled, the plugin will not suggest block ')
+            .addToggle((toggle) => {
+                toggle.setValue(AutoDefinitionLink.settings.useSuggestions)
+                    .onChange(async (value) => {
+                        AutoDefinitionLink.settings.useSuggestions = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+    }
+
+}
+
 export default class AutoDefinitionLink extends Plugin {
     public static blockIds: string[] = [];
+    public static settings: AutoDefinitionLinkSettings;
 
-    onload(): void {
+    lastKey: string;
+    lastKeyShift: boolean;
+
+    async onload() {
+        await this.loadSettings();
+
+        const editor = this.app.workspace.activeEditor?.editor;
+
+        if (editor) {
+            AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor);
+        }
+
         const autoDefinitionLinkSuggest = new AutoDefinitionLinkSuggest(this.app);
         this.registerEditorSuggest(autoDefinitionLinkSuggest);
 
-        (async () => {
-            const editor = this.app.workspace.activeEditor?.editor;
+        this.registerEvent(
+            this.app.workspace.on("layout-change", () => {
 
-            if (!editor) return;
+                const editor = this.app.workspace.activeEditor?.editor;
 
-            AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor)
-        })();
+                if (!editor) return;
 
-        // this.registerDomEvent(document, 'focus', (evt: FocusEvent) => {
-        //     console.log('onfocus');
+                getBlockIds(this.app, editor)
+                    .then((blockIds) => AutoDefinitionLink.blockIds = blockIds);
+            })
+        );
 
-        //     const editor = this.app.workspace.activeEditor?.editor;
+        this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
+            this.lastKey = evt.key;
+            this.lastKeyShift = evt.shiftKey;
+        });
 
-        //     if (!editor) return;
+        this.registerEvent(
+            this.app.workspace.on('editor-change', (editor) => {
+                const cursorPos = editor.getCursor();
+                const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
+                const originalLine = editor.getLine(cursorPos.line);
 
-        //     console.log('focus');
-        // });
+                if (originalLine.length === 0) return;
 
-        // this.registerEvent(
-        //     this.app.workspace.on('editor-change', (editor) => {
-        //         const cursorPos = editor.getCursor();
-        //         const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
-        //         const originalLine = editor.getLine(cursorPos.line);
+                if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
+                    (async () => AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor))();
 
-        //         if (originalLine.length === 0) return;
+                    return; // cancel if editing a term
+                }
 
-        //         if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
+                const validInterrupters = /[?.!, ]/;
 
-        //         const blockIds = getBlockIds(this.app.vault);
+                if (!this.lastKey.match(validInterrupters)) return; // cancel if the last key pressed is not a valid interrupter
 
-        //         if (blockIds.length === 0) return;
+                if (this.lastKeyShift && this.lastKey === ' ') return; // cancel if shift is pressed with space (shift + space is used to insert the actual name of the block)
 
-        //         blockIds.forEach((blockId) => { // loop through each definition in file
-        //             // text representing the valid text for a blockid directly before the cursor
-        //             const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
+                // if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
 
-        //             // number of terms in the block id
-        //             const numTermsInBlockId = blockId.split(/[ -]/).length;
+                if (AutoDefinitionLink.blockIds.length === 0) return;
 
-        //             // select text going backwards for the number of terms in the block id
-        //             const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
+                AutoDefinitionLink.blockIds.forEach((path) => { // loop through each definition in file
+                    const blockId = path.split('#^')[1];
 
-        //             if (normalizeId(substr) === normalizeId(blockId)) {
-        //                 editor.replaceRange(`[[#^${blockId}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
-        //                 return;
-        //             }
-        //         });
-        //     })
-        // );
+                    // text representing the valid text for a blockid directly before the cursor
+                    const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
+
+                    // number of terms in the block id
+                    const numTermsInBlockId = blockId.split(/[ -]/).length;
+
+                    // select text going backwards for the number of terms in the block id
+                    const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
+
+                    if (normalizeId(substr) === normalizeId(blockId)) {
+                        editor.replaceRange(`[[${path}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
+                        return;
+                    }
+                });
+            })
+        );
+
+        this.addSettingTab(new AutoDefinitionLinkSettingTab(this.app, this));
+    }
+
+    async loadSettings() {
+        AutoDefinitionLink.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    }
+
+    async saveSettings() {
+        await this.saveData(AutoDefinitionLink.settings);
     }
 }
