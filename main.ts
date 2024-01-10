@@ -16,8 +16,6 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
 async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[]> {
     const blockIds: string[] = [];
 
-    const filePromises: Promise<void>[] = [];
-
     function processFileContents(contents: string, path: string) {
         const matches = contents.matchAll(/ \^([a-zA-Z0-9-]+$)/gm);
 
@@ -28,29 +26,21 @@ async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[
 
     const activeFile = app.workspace.getActiveFile();
 
-    app.vault.getMarkdownFiles()
-        .forEach((file) => {
-            if (file.parent?.path !== activeFile?.parent?.path) return; // skip if the file is in not the same folder as the active file
+    const files = app.vault.getMarkdownFiles();
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (file.parent?.path !== activeFile?.parent?.path) continue; // skip if the file is in not the same folder as the active file
 
-            filePromises.push(new Promise((resolve) => {
-                // if the file is the active file, use the editor contents instead of reading the file
-                if (file.path == activeFile?.path) {
-                    processFileContents(editor.getValue(), file.path);
+        // if the file is the active file, use the editor contents instead of reading the file (since the file may not be saved yet)
+        if (file.path == activeFile?.path) {
+            processFileContents(editor.getValue(), file.path);
 
-                    resolve();
-                    return;
-                }
+            continue;
+        }
 
-                app.vault.read(file)
-                    .then((contents) => {
-                        processFileContents(contents, file.path);
-
-                        resolve();
-                    });
-            }));
-        });
-
-    await Promise.all(filePromises); // wait for all files to be read
+        const contents = await app.vault.read(file);
+        processFileContents(contents, file.path);
+    }
 
     return blockIds;
 }
@@ -244,7 +234,7 @@ export default class AutoDefinitionLink extends Plugin {
 
                 const validInterrupters = /[?.!, ]/;
 
-                if (!this.lastKey.match(validInterrupters)) return; // cancel if the last key pressed is not a valid interrupter
+                if (!this.lastKey?.match(validInterrupters)) return; // cancel if the last key pressed is not a valid interrupter
 
                 if (this.lastKeyShift && this.lastKey === ' ') return; // cancel if shift is pressed with space (shift + space is used to insert the actual name of the block)
 
