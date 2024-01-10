@@ -162,10 +162,8 @@ class AutoDefinitionLinkSettingTab extends PluginSettingTab {
 
         containerEl.empty();
 
-        containerEl.createEl('h2', { text: 'Auto Definition Link Settings' });
-
         new Setting(containerEl)
-            .setName('Use Suggestions')
+            .setName('Use suggestions')
             .setDesc('If disabled, the plugin will not suggest links to replace block ids with')
             .addToggle((toggle) => {
                 toggle.setValue(AutoDefinitionLink.settings.useSuggestions)
@@ -176,7 +174,7 @@ class AutoDefinitionLinkSettingTab extends PluginSettingTab {
             });
 
         new Setting(containerEl)
-            .setName('Use Auto Link')
+            .setName('Use auto link')
             .setDesc('If disabled, the plugin will not automatically convert a block id to a link after pressing space (or another valid interrupter)')
             .addToggle((toggle) => {
                 toggle.setValue(AutoDefinitionLink.settings.useAutoLink)
@@ -209,14 +207,17 @@ export default class AutoDefinitionLink extends Plugin {
         this.registerEditorSuggest(autoDefinitionLinkSuggest);
 
         this.registerEvent(
-            this.app.workspace.on("layout-change", () => {
+            this.app.workspace.on("layout-change", async () => {
 
                 const editor = this.app.workspace.activeEditor?.editor;
 
                 if (!editor) return;
 
-                getBlockIds(this.app, editor)
-                    .then((blockIds) => AutoDefinitionLink.blockIds = blockIds);
+                try {
+                    AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor)
+                } catch (error) {
+                    console.error(error);
+                }
             })
         );
 
