@@ -5,10 +5,12 @@ import { singular } from "pluralize";
 
 interface AutoDefinitionLinkSettings {
     useSuggestions: boolean;
+    useAutoLink: boolean;
 }
 
 const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     useSuggestions: false,
+    useAutoLink: true,
 }
 
 async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[]> {
@@ -164,11 +166,22 @@ class AutoDefinitionLinkSettingTab extends PluginSettingTab {
 
         new Setting(containerEl)
             .setName('Use Suggestions')
-            .setDesc('If disabled, the plugin will not suggest block ')
+            .setDesc('If disabled, the plugin will not suggest links to replace block ids with')
             .addToggle((toggle) => {
                 toggle.setValue(AutoDefinitionLink.settings.useSuggestions)
                     .onChange(async (value) => {
                         AutoDefinitionLink.settings.useSuggestions = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
+            .setName('Use Auto Link')
+            .setDesc('If disabled, the plugin will not automatically convert a block id to a link after pressing space (or another valid interrupter)')
+            .addToggle((toggle) => {
+                toggle.setValue(AutoDefinitionLink.settings.useAutoLink)
+                    .onChange(async (value) => {
+                        AutoDefinitionLink.settings.useAutoLink = value;
                         await this.plugin.saveSettings();
                     });
             });
@@ -214,6 +227,8 @@ export default class AutoDefinitionLink extends Plugin {
 
         this.registerEvent(
             this.app.workspace.on('editor-change', (editor) => {
+                if (!AutoDefinitionLink.settings.useAutoLink) return;
+
                 const cursorPos = editor.getCursor();
                 const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
                 const originalLine = editor.getLine(cursorPos.line);
