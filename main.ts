@@ -13,7 +13,7 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     useAutoLink: true,
 }
 
-async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[]> {
+async function updateBlockIds(app: App, editor: Editor, path = "") {
     const blockIds: string[] = [];
 
     function processFileContents(contents: string, path: string) {
@@ -31,6 +31,8 @@ async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[
         const file = files[i];
         if (file.parent?.path !== activeFile?.parent?.path) continue; // skip if the file is in not the same folder as the active file
 
+        blockIds.push(file.basename);
+
         // if the file is the active file, use the editor contents instead of reading the file (since the file may not be saved yet)
         if (file.path == activeFile?.path) {
             processFileContents(editor.getValue(), file.path);
@@ -42,7 +44,7 @@ async function getBlockIds(app: App, editor: Editor, path = ""): Promise<string[
         processFileContents(contents, file.path);
     }
 
-    return blockIds;
+    AutoDefinitionLink.blockIds = blockIds;
 }
 
 function normalizeId(id: string): string {
@@ -65,7 +67,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         const suggestions: SuggestionData[] = [];
 
         AutoDefinitionLink.blockIds.forEach((blockPath) => { // loop through each definition in file
-            const blockId = blockPath.split('#^')[1];
+            const blockId = blockPath.indexOf('#^') === -1 ? blockPath : blockPath.split('#^')[1];
 
             // number of terms in the block id
             const numTermsInBlockId = blockId.split(/[ -]/).length;
@@ -99,7 +101,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         if (originalLine.length === 0) return null;
 
         if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
-            (async () => AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor))();
+            updateBlockIds(this.app, editor);
 
             return null; // cancel if editing a term
         }
@@ -190,7 +192,7 @@ export default class AutoDefinitionLink extends Plugin {
         const editor = this.app.workspace.activeEditor?.editor;
 
         if (editor) {
-            AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor);
+            updateBlockIds(this.app, editor);
         }
 
         const autoDefinitionLinkSuggest = new AutoDefinitionLinkSuggest(this.app);
@@ -203,11 +205,7 @@ export default class AutoDefinitionLink extends Plugin {
 
                 if (!editor) return;
 
-                try {
-                    AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor)
-                } catch (error) {
-                    console.error(error);
-                }
+                updateBlockIds(this.app, editor);
             })
         );
 
@@ -227,7 +225,7 @@ export default class AutoDefinitionLink extends Plugin {
                 if (originalLine.length === 0) return;
 
                 if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
-                    (async () => AutoDefinitionLink.blockIds = await getBlockIds(this.app, editor))();
+                    updateBlockIds(this.app, editor);
 
                     return; // cancel if editing a term
                 }
@@ -242,8 +240,14 @@ export default class AutoDefinitionLink extends Plugin {
 
                 if (AutoDefinitionLink.blockIds.length === 0) return;
 
+                const matchingLinks: {
+                    path: string,
+                    substr: string,
+                    numTermsInBlockId: number,
+                }[] = [];
+
                 AutoDefinitionLink.blockIds.forEach((path) => { // loop through each definition in file
-                    const blockId = path.split('#^')[1];
+                    const blockId = path.indexOf('#^') === -1 ? path : path.split('#^')[1];
 
                     // text representing the valid text for a blockid directly before the cursor
                     const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
@@ -255,10 +259,15 @@ export default class AutoDefinitionLink extends Plugin {
                     const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
 
                     if (normalizeId(substr) === normalizeId(blockId)) {
-                        editor.replaceRange(`[[${path}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
-                        return;
+                        matchingLinks.push({ path, substr, numTermsInBlockId });
                     }
                 });
+
+                if (matchingLinks.length === 0) return;
+
+                const {path, substr} = matchingLinks.sort((a, b) => b.numTermsInBlockId - a.numTermsInBlockId)[0];
+
+                editor.replaceRange(`[[${path}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
             })
         );
 
