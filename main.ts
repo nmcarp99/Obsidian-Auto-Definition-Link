@@ -1,4 +1,4 @@
-import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile } from "obsidian";
+import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile, parseYaml } from "obsidian";
 import { singular } from "pluralize";
 
 // make sure last key pressed is space, make sure the cursor is right after the found one
@@ -14,14 +14,33 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
 }
 
 async function updateBlockIds(app: App, editor: Editor, path = "") {
-    const blockIds: string[] = [];
+    const linkDestinations: LinkDestination[] = [];
 
     function processFileContents(contents: string, path: string) {
         const matches = contents.matchAll(/ \^([a-zA-Z0-9-]+$)/gm);
 
         Array.from(matches).forEach((match) => {
-            blockIds.push(path + '#^' + match[1]);
+            linkDestinations.push({
+                linkPath: path + '#^' + match[1],
+                searchValue: match[1],
+                numTerms: match[1].split(/[ -]/).length,
+            });
         });
+
+        // match aliases of file name
+        const properties = Array.from(contents.matchAll(/---\n((?:.|\n)*?)\n---/gm));
+        if (!properties || properties.length === 0 || properties[0].length < 2) return;
+
+        const aliases = parseYaml(properties[0][1]).aliases as string[];
+        if (!aliases) return;
+
+        linkDestinations.push(
+            ...aliases.map((alias: string) => ({
+                linkPath: path,
+                searchValue: alias,
+                numTerms: alias.split(/[ -]/).length
+            }))
+        );
     }
 
     const activeFile = app.workspace.getActiveFile();
@@ -31,7 +50,11 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
         const file = files[i];
         if (file.parent?.path !== activeFile?.parent?.path) continue; // skip if the file is in not the same folder as the active file
 
-        blockIds.push(file.basename);
+        linkDestinations.push({
+            linkPath: file.basename,
+            searchValue: file.basename,
+            numTerms: file.basename.split(/[ -]/).length
+        });
 
         // if the file is the active file, use the editor contents instead of reading the file (since the file may not be saved yet)
         if (file.path == activeFile?.path) {
@@ -44,7 +67,7 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
         processFileContents(contents, file.path);
     }
 
-    AutoDefinitionLink.blockIds = blockIds;
+    AutoDefinitionLink.linkDestinations = linkDestinations;
 }
 
 function normalizeId(id: string): string {
@@ -52,10 +75,15 @@ function normalizeId(id: string): string {
 }
 
 type SuggestionData = {
-    id: string,
     text: string,
+    linkDestination: LinkDestination,
     cursor: EditorPosition,
-    numTerms: number,
+};
+
+type LinkDestination = {
+    linkPath: string, // where it should link to
+    searchValue: string, // what to search for to find the link
+    numTerms: number, // number of terms in the search value
 };
 
 class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
@@ -66,33 +94,29 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     async getSuggestions(context: EditorSuggestContext): Promise<SuggestionData[]> {
         const suggestions: SuggestionData[] = [];
 
-        AutoDefinitionLink.blockIds.forEach((blockPath) => { // loop through each definition in file
-            const blockId = blockPath.indexOf('#^') === -1 ? blockPath : blockPath.split('#^')[1];
-
-            // number of terms in the block id
-            const numTermsInBlockId = blockId.split(/[ -]/).length;
-
+        AutoDefinitionLink.linkDestinations.forEach((linkDestination) => { // loop through each definition in file
             // select text going backwards for the number of terms in the block id
-            const substr = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
+            const substr = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
 
-            if (normalizeId(substr) !== normalizeId(blockId)) return;
+            if (normalizeId(substr) !== normalizeId(linkDestination.searchValue)) return;
 
             // const cursorPos = context.editor.getCursor(); TODO space setting (also change suggestions.push to use cursorPosBeforeSpace)
             // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
 
             suggestions.push({
                 text: substr,
-                id: blockPath,
+                linkDestination,
                 cursor: context.editor.getCursor(),
-                numTerms: numTermsInBlockId,
             });
         });
 
-        return suggestions.sort((a, b) => b.numTerms - a.numTerms);
+        return suggestions.sort((a, b) => b.linkDestination.numTerms - a.linkDestination.numTerms);
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
         if (!AutoDefinitionLink.settings.useSuggestions) return null;
+
+        if (AutoDefinitionLink.linkDestinations.length === 0) return null;
 
         // const cursorPos = cursor;
         // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
@@ -100,7 +124,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
 
         if (originalLine.length === 0) return null;
 
-        if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
+        if (originalLine.substring(0, cursor.ch).match(/\^([a-zA-Z0-9-]+$)/)) {
             updateBlockIds(this.app, editor);
 
             return null; // cancel if editing a term
@@ -120,7 +144,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     }
 
     renderSuggestion(item: SuggestionData, el: HTMLElement): void {
-        el.setText(item.id.split("#^")[0] + '-' + item.text);
+        el.setText(item.linkDestination.linkPath);
     }
 
     selectSuggestion(item: SuggestionData, evt: MouseEvent | KeyboardEvent): void {
@@ -133,11 +157,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         // if shift is pressed, insert the actual name of the block
         // if (evt.shiftKey) return editor.replaceRange(`[[#^${item.id}|${item.id}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
 
-        let link = item.id;
-
-        if (this.app.workspace.getActiveFile()?.path === item.id.split('#^')[0]) link = '#^' + item.id.split('#^')[1];
-
-        editor.replaceRange(`[[${link}|${item.text}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
+        editor.replaceRange(`[[${item.linkDestination.linkPath}|${item.text}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
     }
 }
 
@@ -180,7 +200,7 @@ class AutoDefinitionLinkSettingTab extends PluginSettingTab {
 }
 
 export default class AutoDefinitionLink extends Plugin {
-    public static blockIds: string[] = [];
+    public static linkDestinations: LinkDestination[] = [];
     public static settings: AutoDefinitionLinkSettings;
 
     lastKey: string;
@@ -224,7 +244,7 @@ export default class AutoDefinitionLink extends Plugin {
 
                 if (originalLine.length === 0) return;
 
-                if (originalLine.match(/\^([a-zA-Z0-9-]+$)/)) {
+                if (originalLine.substring(0, cursorPos.ch).match(/\^([a-zA-Z0-9-]+$)/)) {
                     updateBlockIds(this.app, editor);
 
                     return; // cancel if editing a term
@@ -238,36 +258,33 @@ export default class AutoDefinitionLink extends Plugin {
 
                 // if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
 
-                if (AutoDefinitionLink.blockIds.length === 0) return;
+                if (AutoDefinitionLink.linkDestinations.length === 0) return;
 
                 const matchingLinks: {
-                    path: string,
-                    substr: string,
-                    numTermsInBlockId: number,
+                    linkDestination: LinkDestination,
+                    text: string,
                 }[] = [];
 
-                AutoDefinitionLink.blockIds.forEach((path) => { // loop through each definition in file
-                    const blockId = path.indexOf('#^') === -1 ? path : path.split('#^')[1];
-
+                AutoDefinitionLink.linkDestinations.forEach((linkDestination) => { // loop through each definition in file
                     // text representing the valid text for a blockid directly before the cursor
                     const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
 
-                    // number of terms in the block id
-                    const numTermsInBlockId = blockId.split(/[ -]/).length;
-
                     // select text going backwards for the number of terms in the block id
-                    const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${numTermsInBlockId}}$`)) || [''])[0].replace(/^[ -]/, '');
+                    const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
 
-                    if (normalizeId(substr) === normalizeId(blockId)) {
-                        matchingLinks.push({ path, substr, numTermsInBlockId });
+                    if (normalizeId(substr) === normalizeId(linkDestination.searchValue)) {
+                        matchingLinks.push({
+                            linkDestination,
+                            text: substr,
+                        });
                     }
                 });
 
                 if (matchingLinks.length === 0) return;
 
-                const {path, substr} = matchingLinks.sort((a, b) => b.numTermsInBlockId - a.numTermsInBlockId)[0];
+                const { linkDestination: longestMatchingLink, text } = matchingLinks.sort((a, b) => b.linkDestination.numTerms - a.linkDestination.numTerms)[0];
 
-                editor.replaceRange(`[[${path}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
+                editor.replaceRange(`[[${longestMatchingLink.linkPath}|${text}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - text.length }, cursorPosBeforeSpace);
             })
         );
 
