@@ -1,4 +1,4 @@
-import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile, parseYaml } from "obsidian";
+import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile, debounce, parseYaml } from "obsidian";
 import { singular } from "pluralize";
 
 // make sure last key pressed is space, make sure the cursor is right after the found one
@@ -13,7 +13,9 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     useAutoLink: true,
 }
 
-async function updateBlockIds(app: App, editor: Editor, path = "") {
+const updateBlockIds = debounce(_updateBlockIds, 1000);
+
+async function _updateBlockIds(app: App, editor: Editor, path = "") {
     const linkDestinations: LinkDestination[] = [];
 
     function processFileContents(contents: string, path: string) {
@@ -98,7 +100,9 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
             // select text going backwards for the number of terms in the block id
             const substr = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
 
-            if (normalizeId(substr) !== normalizeId(linkDestination.searchValue)) return;
+            if (!substr) return;
+
+            if (!normalizeId(linkDestination.searchValue).startsWith(normalizeId(substr))) return;
 
             // const cursorPos = context.editor.getCursor(); TODO space setting (also change suggestions.push to use cursorPosBeforeSpace)
             // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
@@ -134,7 +138,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         // console.debug('space found');
 
         // text representing the valid text for a blockid directly before the cursor
-        const possibleBlockIdContainingStr = (originalLine.substring(0, cursor.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0]; // TODO space setting
+        const possibleBlockIdContainingStr = (originalLine.substring(0, cursor.ch) || ''); // TODO space setting
 
         return {
             start: cursor, // TODO space setting (also change end to use cursorPosBeforeSpace)
@@ -267,7 +271,7 @@ export default class AutoDefinitionLink extends Plugin {
 
                 AutoDefinitionLink.linkDestinations.forEach((linkDestination) => { // loop through each definition in file
                     // text representing the valid text for a blockid directly before the cursor
-                    const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch).match(/[a-zA-Z0-9- ]+$/) || [''])[0];
+                    const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
 
                     // select text going backwards for the number of terms in the block id
                     const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
