@@ -13,9 +13,9 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     useAutoLink: true,
 }
 
-const updateBlockIds = debounce(_updateBlockIds, 1000);
+// const updateBlockIds = debounce(_updateBlockIds, 1000);
 
-async function _updateBlockIds(app: App, editor: Editor, path = "") {
+async function updateBlockIds(app: App, editor: Editor, path = "") {
     const linkDestinations: LinkDestination[] = [];
 
     function processFileContents(contents: string, path: string) {
@@ -96,13 +96,22 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     async getSuggestions(context: EditorSuggestContext): Promise<SuggestionData[]> {
         const suggestions: SuggestionData[] = [];
 
+        const substrCache: { [numTerms: number]: string } = {};
+        const normalizedSubstrCache: { [numTerms: number]: string } = {};
+
         AutoDefinitionLink.linkDestinations.forEach((linkDestination) => { // loop through each definition in file
             // select text going backwards for the number of terms in the block id
-            const substr = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
+            if (substrCache[linkDestination.numTerms] === undefined) {
+                substrCache[linkDestination.numTerms] = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
+                normalizedSubstrCache[linkDestination.numTerms] = normalizeId(substrCache[linkDestination.numTerms]);
+            }
+
+            const substr = substrCache[linkDestination.numTerms];
+            const normalizedSubstr = normalizedSubstrCache[linkDestination.numTerms];
 
             if (!substr) return;
 
-            if (!normalizeId(linkDestination.searchValue).startsWith(normalizeId(substr))) return;
+            if (!normalizeId(linkDestination.searchValue).startsWith(normalizedSubstr)) return;
 
             // const cursorPos = context.editor.getCursor(); TODO space setting (also change suggestions.push to use cursorPosBeforeSpace)
             // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
@@ -269,14 +278,24 @@ export default class AutoDefinitionLink extends Plugin {
                     text: string,
                 }[] = [];
 
+                const substrCache: { [numTerms: number]: string } = {};
+                const normalizedSubstrCache: { [numTerms: number]: string } = {};
+
                 AutoDefinitionLink.linkDestinations.forEach((linkDestination) => { // loop through each definition in file
-                    // text representing the valid text for a blockid directly before the cursor
-                    const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
+                    if (!substrCache[linkDestination.numTerms]) {
+                        // text representing the valid text for a blockid directly before the cursor
+                        const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
 
-                    // select text going backwards for the number of terms in the block id
-                    const substr = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
+                        // select text going backwards for the number of terms in the block id
+                        substrCache[linkDestination.numTerms] = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
 
-                    if (normalizeId(substr) === normalizeId(linkDestination.searchValue)) {
+                        normalizedSubstrCache[linkDestination.numTerms] = normalizeId(substrCache[linkDestination.numTerms]);
+                    }
+
+                    const substr = substrCache[linkDestination.numTerms];
+                    const normalizedSubstr = normalizedSubstrCache[linkDestination.numTerms];
+
+                    if (normalizedSubstr === normalizeId(linkDestination.searchValue)) {
                         matchingLinks.push({
                             linkDestination,
                             text: substr,
