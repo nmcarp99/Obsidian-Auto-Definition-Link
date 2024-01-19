@@ -102,7 +102,9 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         AutoDefinitionLink.linkDestinations.forEach((linkDestination) => { // loop through each definition in file
             // select text going backwards for the number of terms in the block id
             if (substrCache[linkDestination.numTerms] === undefined) {
-                substrCache[linkDestination.numTerms] = (context.query.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
+                const substrLen = context.query.split(/[- ]/).slice(-linkDestination.numTerms).reduce((acc, curr) => acc + curr.length, 0) + linkDestination.numTerms - 1;
+                substrCache[linkDestination.numTerms] = context.query.split('').slice(-substrLen).join(''); // get the last n characters
+
                 normalizedSubstrCache[linkDestination.numTerms] = normalizeId(substrCache[linkDestination.numTerms]);
             }
 
@@ -287,7 +289,8 @@ export default class AutoDefinitionLink extends Plugin {
                         const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
 
                         // select text going backwards for the number of terms in the block id
-                        substrCache[linkDestination.numTerms] = (possibleBlockIdContainingStr.match(new RegExp(`(?:[ -]{0,1}[^ -]*){${linkDestination.numTerms}}$`)) || [''])[0].replace(/^[ -]/, '');
+                        const substrLen = possibleBlockIdContainingStr.split(/[- ]/).slice(-linkDestination.numTerms).reduce((acc, curr) => acc + curr.length, 0) + linkDestination.numTerms - 1;
+                        substrCache[linkDestination.numTerms] = possibleBlockIdContainingStr.split('').slice(-substrLen).join(''); // get the last n characters
 
                         normalizedSubstrCache[linkDestination.numTerms] = normalizeId(substrCache[linkDestination.numTerms]);
                     }
