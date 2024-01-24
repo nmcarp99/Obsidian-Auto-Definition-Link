@@ -1,5 +1,5 @@
 import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Notice, Plugin, PluginSettingTab, Setting, TFile, parseYaml } from "obsidian";
-import { singular } from "pluralize";
+import { singular } from 'pluralize';
 
 // make sure last key pressed is space, make sure the cursor is right after the found one
 
