@@ -175,7 +175,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
 
         const startTime = Date.now();
 
-        for (let i = AutoDefinitionLink.maxNumTerms; i <= 1; i++) { // loop through each possible number of terms in a block id
+        for (let i = AutoDefinitionLink.maxNumTerms; i >= 1; i--) { // loop through each possible number of terms in a block id
             const substrLen = context.query.split(/[- ]/).slice(-i).reduce((acc, curr) => acc + curr.length, 0) + i - 1; // get the length of the last n characters
             const substr = context.query.split('').slice(-substrLen).join(''); // get the last n characters
             const normalizedSubstr = normalizeId(substr);
