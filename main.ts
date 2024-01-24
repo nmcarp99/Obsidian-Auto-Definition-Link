@@ -175,7 +175,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
 
         const startTime = Date.now();
 
-        for (let i = 1; i <= AutoDefinitionLink.maxNumTerms; i++) { // loop through each possible number of terms in a block id
+        for (let i = AutoDefinitionLink.maxNumTerms; i <= 1; i++) { // loop through each possible number of terms in a block id
             const substrLen = context.query.split(/[- ]/).slice(-i).reduce((acc, curr) => acc + curr.length, 0) + i - 1; // get the length of the last n characters
             const substr = context.query.split('').slice(-substrLen).join(''); // get the last n characters
             const normalizedSubstr = normalizeId(substr);
@@ -197,11 +197,9 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
             );
         }
 
-        const sortedSuggestions = suggestions.reverse(); // because we're looping through the number of terms ascending, we need to reverse to get the longest (in terms)
-
         console.debug(`getSuggestions took ${Date.now() - startTime}ms`);
 
-        return sortedSuggestions;
+        return suggestions;
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
@@ -396,7 +394,7 @@ export default class AutoDefinitionLink extends Plugin {
                 //     text: string,
                 // }[] = [];
 
-                for (let i = 1; i <= AutoDefinitionLink.maxNumTerms; i++) { // loop through each possible number of terms in a block id
+                for (let i = AutoDefinitionLink.maxNumTerms; i >= 1; i--) { // loop through each possible number of terms in a block id
                     // text representing the valid text for a blockid directly before the cursor
                     const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
 
@@ -411,6 +409,8 @@ export default class AutoDefinitionLink extends Plugin {
 
                     // just take the first for now
                     editor.replaceRange(`[[${linkDestinations[0].linkPath}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
+
+                    return;
 
                     // matchingLinks.push(
                     //     ...linkDestinations.map(linkDestination => ({
