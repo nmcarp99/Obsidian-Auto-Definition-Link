@@ -1,22 +1,49 @@
-import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Notice, Plugin, PluginSettingTab, Setting, TFile, parseYaml } from "obsidian";
+import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile, debounce, parseYaml } from "obsidian";
 import { singular } from 'pluralize';
 
 // make sure last key pressed is space, make sure the cursor is right after the found one
 
+/**
+ * Regex used to find if text ends in a block id (e.g. `asdfasdf ^block-id` would match `^block-id`)
+ */
+const BLOCKIDREGEX = / \^([a-zA-Z0-9-]+$)/gm;
+
+/**
+ * Regex used to find YAML front matter
+ */
+const YAMLREGEX = /---\n((?:.|\n)*?)\n---/gm;
+
+/**
+ * Valid characters that can be pressed to trigger the auto link process
+ */
+const VALIDINTERRUPTERS = /^[^a-zA-Z-0-9]$/;
+
+/**
+ * Characters that split up terms
+ */
+const TERMSPLITTERS = /[^a-zA-Z0-9]/;
+
 interface AutoDefinitionLinkSettings {
     useSuggestions: boolean;
     useAutoLink: boolean;
+    searchFileContent: boolean;
+    subFolderDepth: number;
 }
 
 const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     useSuggestions: false,
     useAutoLink: true,
+    searchFileContent: true,
+    subFolderDepth: -1,
 }
 
-// const updateBlockIds = debounce(_updateBlockIds, 1000);
+const _updateBlockIds = debounce(updateBlockIds, 3000);
 
-async function updateBlockIds(app: App, editor: Editor, path = "") {
-    new Notice('Updating block ids...');
+async function updateBlockIds(app: App, editor: Editor) {
+    if (AutoDefinitionLink.isUpdatingBlockIds) return;
+    AutoDefinitionLink.isUpdatingBlockIds = true;
+
+    AutoDefinitionLink.statusBarEl.setText('Searching files...');
 
     const startTime = Date.now();
 
@@ -25,10 +52,10 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
     const linkDestinations: LinkDestination[] = [];
 
     function processFileContents(contents: string, path: string) {
-        const matches = contents.matchAll(/ \^([a-zA-Z0-9-]+$)/gm);
+        const matches = contents.matchAll(BLOCKIDREGEX);
 
         Array.from(matches).forEach((match) => {
-            const blockNumTerms = match[1].split(/[ -]/).length;
+            const blockNumTerms = match[1].split(TERMSPLITTERS).length;
 
             linkDestinations.push({
                 linkPath: path + '#^' + match[1],
@@ -40,7 +67,7 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
         });
 
         // match aliases of file name
-        const properties = Array.from(contents.matchAll(/---\n((?:.|\n)*?)\n---/gm));
+        const properties = Array.from(contents.matchAll(YAMLREGEX));
         if (!properties || properties.length === 0 || properties[0].length < 2) return;
 
         const aliases = parseYaml(properties[0][1]).aliases as string[];
@@ -48,7 +75,7 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
 
         linkDestinations.push(
             ...aliases.map((alias: string) => {
-                const aliasNumTerms = alias.split(/[ -]/).length;
+                const aliasNumTerms = alias.split(TERMSPLITTERS).length;
 
                 if (aliasNumTerms > maxNumTerms) maxNumTerms = aliasNumTerms;
 
@@ -67,11 +94,25 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
 
     const fileProcessingPromises: Promise<number>[] = [];
 
+    let filesProcessed = 0;
+
+    function incrementStatusBar() {
+        filesProcessed++;
+
+        const timeEstimate =
+            (Math.round(
+                (Date.now() - startTime) / filesProcessed * (files.length - filesProcessed) // milliseconds
+                / 10) / 100) // seconds
+                .toFixed(2);
+
+        AutoDefinitionLink.statusBarEl.setText(`Searching files... ${filesProcessed}/${files.length} processed (${timeEstimate}s)`);
+    }
+
     files.forEach((file, i) => {
-        // if (file.parent?.path !== activeFile?.parent?.path) continue; // skip if the file is in not the same folder as the active file
+        // if (file.parent?.path !== activeFile?.parent?.path) return; // skip if the file is in not the same folder as the active file
 
         fileProcessingPromises.push(new Promise((resolve) => {
-            const fileNameNumTerms = file.basename.split(/[ -]/).length;
+            const fileNameNumTerms = file.basename.split(TERMSPLITTERS).length;
 
             if (fileNameNumTerms > maxNumTerms) maxNumTerms = fileNameNumTerms;
 
@@ -81,28 +122,32 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
                 numTerms: fileNameNumTerms,
             });
 
+            // if search file content is disabled, skip reading the file
+            if (!AutoDefinitionLink.settings.searchFileContent) {
+                incrementStatusBar();
+                return resolve(0);
+            }
+
             // if the file is the active file, use the editor contents instead of reading the file (since the file may not be saved yet)
             if (file.path == activeFile?.path) {
                 processFileContents(editor.getValue(), file.path);
+                incrementStatusBar();
                 return resolve(0);
             }
 
             app.vault.read(file)
                 .then((contents) => {
                     processFileContents(contents, file.path);
+                    incrementStatusBar();
                     return resolve(0);
                 });
 
         }));
     });
 
-    new Notice('Started all link destination searches...');
-
-    const reminderNoticeInterval = setInterval(() => {
-        new Notice('Still searching for link destinations...');
-    }, 3000);
-
     await Promise.all(fileProcessingPromises);
+
+    AutoDefinitionLink.statusBarEl.setText('Indexing link database...');
 
     // sort link destinations by number of terms then alphabetically
     AutoDefinitionLink.linkDestinations = linkDestinations.sort((a, b) => {
@@ -142,13 +187,13 @@ async function updateBlockIds(app: App, editor: Editor, path = "") {
         currentNumTerms++;
     }
 
-    clearInterval(reminderNoticeInterval);
+    AutoDefinitionLink.statusBarEl.setText(`Updated block ids in ${Date.now() - startTime}ms`);
 
-    new Notice(`Updated block ids in ${Date.now() - startTime}ms`);
+    AutoDefinitionLink.isUpdatingBlockIds = false;
 }
 
 function normalizeId(id: string): string {
-    return id.replace(/ /g, '-').toLowerCase().split('-').map((word) => singular(word)).join('-');
+    return id.toLowerCase().split(TERMSPLITTERS).map((word) => singular(word)).join('-');
 }
 
 type SuggestionData = {
@@ -169,70 +214,29 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     }
 
     async getSuggestions(context: EditorSuggestContext): Promise<SuggestionData[]> {
-        const suggestions: SuggestionData[] = [];
-
-        console.debug('getSuggestions');
-
-        const startTime = Date.now();
-
-        for (let i = AutoDefinitionLink.maxNumTerms; i >= 1; i--) { // loop through each possible number of terms in a block id
-            const substrLen = context.query.split(/[- ]/).slice(-i).reduce((acc, curr) => acc + curr.length, 0) + i - 1; // get the length of the last n characters
-            const substr = context.query.split('').slice(-substrLen).join(''); // get the last n characters
-            const normalizedSubstr = normalizeId(substr);
-
-            // const linkDestination = AutoDefinitionLink.linkDestinations.find(linkDestination => linkDestination.searchValue == normalizedSubstr);
-            const linkDestinations = AutoDefinitionLink.binarySearchLinkDestinations(normalizedSubstr, i);
-
-            if (!linkDestinations?.length) continue;
-
-            // const cursorPos = context.editor.getCursor(); TODO space setting (also change suggestions.push to use cursorPosBeforeSpace)
-            // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
-
-            suggestions.push(
-                ...linkDestinations.map(linkDestination => ({
-                    text: substr,
-                    linkDestination,
-                    cursor: context.editor.getCursor(),
-                }))
-            );
-        }
-
-        console.debug(`getSuggestions took ${Date.now() - startTime}ms`);
-
-        return suggestions;
+        return AutoDefinitionLink.getSuggestions(context.query, context.editor.getCursor());
     }
 
     onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
         if (!AutoDefinitionLink.settings.useSuggestions) return null;
-
         if (AutoDefinitionLink.linkDestinations.length === 0) return null;
 
-        // const cursorPos = cursor;
-        // const cursorPosBeforeSpace = { line: cursorPos.line, ch: cursorPos.ch - 1 };
         const originalLine = editor.getLine(cursor.line);
-
         if (originalLine.length === 0) return null;
-
         const textBeforeCursor = originalLine.slice(0, cursor.ch);
 
+        // handle editing block ids
         const carrotIndex = originalLine.indexOf(' ^');
-
-        if (carrotIndex !== -1 && originalLine.slice(carrotIndex, cursor.ch).match(/\^([a-zA-Z0-9-]+$)/)) {
-            updateBlockIds(this.app, editor);
+        if (carrotIndex !== -1 && originalLine.slice(carrotIndex, cursor.ch).match(BLOCKIDREGEX)) {
+            _updateBlockIds(this.app, editor);
 
             return null; // cancel if editing a term
         }
 
-        // if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return null; // TODO space setting
-        // console.debug('space found');
-
-        // text representing the valid text for a blockid directly before the cursor
-        const possibleBlockIdContainingStr = (textBeforeCursor || ''); // TODO space setting
-
         return {
             start: cursor, // TODO space setting (also change end to use cursorPosBeforeSpace)
             end: cursor,
-            query: possibleBlockIdContainingStr,
+            query: textBeforeCursor || '',
         };
     }
 
@@ -247,10 +251,7 @@ class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
 
         if (!editor) return;
 
-        // if shift is pressed, insert the actual name of the block
-        // if (evt.shiftKey) return editor.replaceRange(`[[#^${item.id}|${item.id}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
-
-        editor.replaceRange(`[[${item.linkDestination.linkPath}|${item.text}]]`, { line: item.cursor.line, ch: item.cursor.ch - item.text.length }, item.cursor);
+        AutoDefinitionLink.replaceSuggestion(item, editor);
     }
 }
 
@@ -288,6 +289,45 @@ class AutoDefinitionLinkSettingTab extends PluginSettingTab {
                         await this.plugin.saveSettings();
                     });
             });
+
+        new Setting(containerEl)
+            .setName('Search file content')
+            .setDesc('If disabled, the plugin will only use the names of files and not the contents of files to find links. If you are having performance issues, DISABLE THIS.')
+            .addToggle((toggle) => {
+                toggle.setValue(AutoDefinitionLink.settings.searchFileContent)
+                    .onChange(async (value) => {
+                        AutoDefinitionLink.settings.searchFileContent = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
+            .setName('Subfolder depth')
+            .setDesc('How many subfolders deep to match link destinations; 0 = current folder only; -1 = all subfolders')
+            .addText((text) => {
+                text.setValue(AutoDefinitionLink.settings.subFolderDepth.toString())
+                    .onChange(async (value) => {
+                        AutoDefinitionLink.settings.subFolderDepth = parseInt(value);
+                        await this.plugin.saveSettings();
+                    });
+
+                text.inputEl.type = 'number';
+                text.inputEl.min = '-1';
+            });
+
+        new Setting(containerEl)
+            .setName('Refresh Links')
+            .setDesc('Refreshes the links in the current vault. This may take a while.')
+            .addButton((button) => {
+                button.setButtonText('Refresh Links')
+                    .onClick(async () => {
+                        const editor = this.app.workspace.activeEditor?.editor;
+
+                        if (!editor) return;
+
+                        updateBlockIds(this.app, editor);
+                    });
+            });
     }
 
 }
@@ -297,6 +337,8 @@ export default class AutoDefinitionLink extends Plugin {
     public static maxNumTerms = 0;
     public static linkDestinationsNumTermsRanges: { [numTerms: number]: { start: number, end: number } } = {}; // inclusive
     public static settings: AutoDefinitionLinkSettings;
+    public static statusBarEl: HTMLSpanElement;
+    public static isUpdatingBlockIds = false;
 
     public static binarySearchLinkDestinations(searchValue: string, numTerms: number): LinkDestination[] | null {
         let start = AutoDefinitionLink.linkDestinationsNumTermsRanges[numTerms]?.start ?? 0;
@@ -332,11 +374,76 @@ export default class AutoDefinitionLink extends Plugin {
         return null;
     }
 
+    public static replaceSuggestion(suggestion: SuggestionData, editor: Editor): void {
+        editor.replaceRange(`[[${suggestion.linkDestination.linkPath}|${suggestion.text}]]`, { line: suggestion.cursor.line, ch: suggestion.cursor.ch - suggestion.text.length }, suggestion.cursor);
+    }
+
+    public static getSuggestions(query: string, cursor: EditorPosition): SuggestionData[] {
+        const suggestions: SuggestionData[] = [];
+
+        console.debug('getSuggestions');
+
+        const startTime = Date.now();
+
+        for (let i = AutoDefinitionLink.maxNumTerms; i >= 1; i--) { // loop through each possible number of terms in a block id
+            const substrLen = query.split(TERMSPLITTERS).slice(-i).reduce((acc, curr) => acc + curr.length, 0) + i - 1; // get the length of the last n characters
+            const substr = query.split('').slice(-substrLen).join(''); // get the last n characters
+            const normalizedSubstr = normalizeId(substr);
+
+            console.log(i + ' ' + normalizedSubstr);
+
+            const linkDestinations = AutoDefinitionLink.binarySearchLinkDestinations(normalizedSubstr, i);
+
+            if (!linkDestinations?.length) continue;
+
+            suggestions.push(
+                ...linkDestinations.map(linkDestination => ({
+                    text: substr,
+                    linkDestination,
+                    cursor
+                }))
+            );
+        }
+
+        console.debug(`getSuggestions took ${Date.now() - startTime}ms`);
+
+        return suggestions;
+    }
+
     lastKey: string;
     lastKeyShift: boolean;
 
     async onload() {
+        AutoDefinitionLink.statusBarEl = this.addStatusBarItem().createEl('span', { text: 'Starting up...' });
+
+
         await this.loadSettings();
+
+        // *** start add refresh button ***
+        const refreshButton = this.addStatusBarItem();
+        refreshButton.addClass('mod-clickable');
+        refreshButton.createEl('span', { text: '↻' });
+        refreshButton.onclick = () => {
+            const editor = this.app.workspace.activeEditor?.editor;
+
+            if (!editor) return;
+
+            updateBlockIds(this.app, editor);
+        };
+        // *** end add refresh button ***
+
+        // add refresh command
+        this.addCommand({
+            id: 'refresh-block-ids',
+            name: 'Refresh Links',
+            callback: () => {
+                const editor = this.app.workspace.activeEditor?.editor;
+
+                if (!editor) return;
+
+                updateBlockIds(this.app, editor);
+            },
+        });
 
         const editor = this.app.workspace.activeEditor?.editor;
 
@@ -358,6 +465,22 @@ export default class AutoDefinitionLink extends Plugin {
             })
         );
 
+        this.registerMarkdownPostProcessor((el, ctx) => {
+            const links = el.querySelectorAll('a.internal-link');
+
+            links.forEach((link) => {
+                const linkPath = link.getAttribute('href');
+
+                if (!linkPath) return;
+
+                const linkDestination = AutoDefinitionLink.linkDestinations.find(linkDestination => linkDestination.linkPath === linkPath);
+
+                if (!linkDestination) return;
+
+                link.setAttribute('title', linkDestination.linkPath);
+            });
+        });
+
         this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
             this.lastKey = evt.key;
             this.lastKeyShift = evt.shiftKey;
@@ -372,53 +495,26 @@ export default class AutoDefinitionLink extends Plugin {
                 const originalLine = editor.getLine(cursorPos.line);
 
                 if (originalLine.length === 0) return;
-
-                if (originalLine.substring(0, cursorPos.ch).match(/\^([a-zA-Z0-9-]+$)/)) {
-                    updateBlockIds(this.app, editor);
+                // handle editing block ids
+                const carrotIndex = originalLine.indexOf(' ^');
+                if (carrotIndex !== -1 && originalLine.slice(carrotIndex, cursorPos.ch).match(BLOCKIDREGEX)) {
+                    _updateBlockIds(this.app, editor);
 
                     return; // cancel if editing a term
                 }
 
-                const validInterrupters = /[?.!,; ]/;
-
-                if (!this.lastKey?.match(validInterrupters)) return; // cancel if the last key pressed is not a valid interrupter
-
+                if (!this.lastKey?.match(VALIDINTERRUPTERS)) return; // cancel if the last key pressed is not a valid interrupter
                 if (this.lastKeyShift && this.lastKey === ' ') return; // cancel if shift is pressed with space (shift + space is used to insert the actual name of the block)
-
-                // if (originalLine.charAt(cursorPosBeforeSpace.ch) !== ' ') return;
-
                 if (AutoDefinitionLink.linkDestinations.length === 0) return;
 
-                // const matchingLinks: {
-                //     linkDestination: LinkDestination,
-                //     text: string,
-                // }[] = [];
+                const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
 
-                for (let i = AutoDefinitionLink.maxNumTerms; i >= 1; i--) { // loop through each possible number of terms in a block id
-                    // text representing the valid text for a blockid directly before the cursor
-                    const possibleBlockIdContainingStr = (originalLine.substring(0, cursorPosBeforeSpace.ch) || '');
+                const matchingLinkDestinations = AutoDefinitionLink.getSuggestions(possibleBlockIdContainingStr, cursorPosBeforeSpace);
 
-                    // select text going backwards for the number of terms in the block id
-                    const substrLen = possibleBlockIdContainingStr.split(/[- ]/).slice(-i).reduce((acc, curr) => acc + curr.length, 0) + i - 1;
-                    const substr = possibleBlockIdContainingStr.split('').slice(-substrLen).join(''); // get the last n characters
-                    const normalizedSubstr = normalizeId(substr);
+                if (!matchingLinkDestinations?.length) return;
 
-                    const linkDestinations = AutoDefinitionLink.binarySearchLinkDestinations(normalizedSubstr, i);
-
-                    if (!linkDestinations?.length) continue;
-
-                    // just take the first for now
-                    editor.replaceRange(`[[${linkDestinations[0].linkPath}|${substr}]]`, { line: cursorPosBeforeSpace.line, ch: cursorPosBeforeSpace.ch - substr.length }, cursorPosBeforeSpace);
-
-                    return;
-
-                    // matchingLinks.push(
-                    //     ...linkDestinations.map(linkDestination => ({
-                    //         linkDestination,
-                    //         text: substr,
-                    //     }))
-                    // );
-                }
+                // just take the first for now
+                AutoDefinitionLink.replaceSuggestion(matchingLinkDestinations[0], editor);
             })
         );
 
