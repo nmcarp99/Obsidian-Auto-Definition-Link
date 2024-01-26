@@ -21,7 +21,7 @@ const VALIDINTERRUPTERS = /^[^a-zA-Z-0-9]$/;
 /**
  * Characters that split up terms
  */
-const TERMSPLITTERS = /[^a-zA-Z0-9]/;
+const TERMSPLITTERS = /[^a-zA-Z0-9]/g;
 
 interface AutoDefinitionLinkSettings {
     useSuggestions: boolean;
@@ -38,6 +38,20 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
 }
 
 const _updateBlockIds = debounce(updateBlockIds, 3000);
+
+function internalLinkElement(linkPath: string, text: string) {
+    const element = document.createElement('a');
+    element.dataset.tooltipPosition = 'top';
+    element.setAttribute('aria-label', linkPath);
+    element.setAttribute('data-href', linkPath);
+    element.href = linkPath;
+    element.classList.add('internal-link');
+    element.target = '_blank';
+    element.rel = 'noopener';
+    element.innerText = text;
+
+    return element;
+}
 
 async function updateBlockIds(app: App, editor: Editor) {
     if (AutoDefinitionLink.isUpdatingBlockIds) return;
@@ -390,8 +404,6 @@ export default class AutoDefinitionLink extends Plugin {
             const substr = query.split('').slice(-substrLen).join(''); // get the last n characters
             const normalizedSubstr = normalizeId(substr);
 
-            console.log(i + ' ' + normalizedSubstr);
-
             const linkDestinations = AutoDefinitionLink.binarySearchLinkDestinations(normalizedSubstr, i);
 
             if (!linkDestinations?.length) continue;
@@ -466,18 +478,81 @@ export default class AutoDefinitionLink extends Plugin {
         );
 
         this.registerMarkdownPostProcessor((el, ctx) => {
-            const links = el.querySelectorAll('a.internal-link');
+            function getTextRecursively(element: Element): { [text: string]: Node } {
+                let texts: {
+                    [text: string]: Node
+                } = {};
 
-            links.forEach((link) => {
-                const linkPath = link.getAttribute('href');
+                const children = Array.from(element.childNodes);
 
-                if (!linkPath) return;
+                children.forEach(child => {
+                    console.log(child);
 
-                const linkDestination = AutoDefinitionLink.linkDestinations.find(linkDestination => linkDestination.linkPath === linkPath);
+                    if (child instanceof HTMLElement && child.hasClass('internal-link')) return;
 
-                if (!linkDestination) return;
+                    if (child.nodeType === Node.TEXT_NODE) {
+                        if (!child.textContent) return;
 
-                link.setAttribute('title', linkDestination.linkPath);
+                        return texts[child.textContent] = child;
+                    }
+
+                    if (!(child instanceof HTMLElement)) return;
+
+                    texts = {
+                        ...texts,
+                        ...getTextRecursively(child)
+                    };
+                })
+
+                return texts;
+            }
+
+            const textMap = getTextRecursively(el);
+
+            Object.entries(textMap).forEach(([text, element]) => {
+
+                console.log(text);
+                console.log(element);
+
+                // get separating indices
+                // reverse to get most terms (least likely to match) first
+                const indices: number[] = Array.from(text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
+                indices.push(text.length); // add the end of the string (so the last term can be matched)
+                indices.reverse();
+
+                // loop through separating indices
+                indices.forEach(i => {
+                    // just use first suggestion for now
+                    const suggestions = AutoDefinitionLink.getSuggestions(text.slice(0, i), { line: 0, ch: 0 });
+
+                    console.log(i);
+                    console.log(suggestions);
+                    console.log('-'.repeat(100));
+
+                    if (!suggestions.length) return;
+
+                    let usedSuggestion = false;
+
+                    suggestions.forEach((suggestion) => {
+                        if (usedSuggestion) return;
+
+                        console.log('using suggestion');
+
+                        // make sure to leave the original node as the first child - do not replace it
+                        const beginningText = element.textContent?.slice(0, i - suggestion.text.length) ?? '';
+                        const endText = element.textContent?.slice(i) ?? '';
+
+                        element.nodeValue = beginningText;
+                        const newLinkNode = element.parentNode?.insertAfter(internalLinkElement(suggestion.linkDestination.linkPath, suggestion.text), element);
+
+                        if (!newLinkNode) throw new Error('newLinkNode is null');
+
+                        element.parentNode?.insertAfter(document.createTextNode(endText), newLinkNode);
+
+                        // check if the suggestion was used before setting usedSuggestion to true !!!
+                        usedSuggestion = true;
+                    });
+                })
             });
         });
 
