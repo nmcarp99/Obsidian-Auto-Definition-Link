@@ -1,8 +1,8 @@
 import AutoDefinitionLink from "main";
-import { App, Editor, debounce, parseYaml } from "obsidian";
+import { App, Editor, MarkdownView, debounce, parseYaml } from "obsidian";
 import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, normalizeId } from "shared";
 
-export const _updateBlockIds = debounce(updateBlockIds, 30000);
+export const _updateBlockIds = debounce(updateBlockIds, 2000);
 
 export async function updateBlockIds(app: App, editor: Editor) {
     if (AutoDefinitionLink.isUpdatingBlockIds) return;
@@ -74,8 +74,6 @@ export async function updateBlockIds(app: App, editor: Editor) {
     }
 
     files.forEach((file, i) => {
-        // if (file.parent?.path !== activeFile?.parent?.path) return; // skip if the file is in not the same folder as the active file
-
         fileProcessingPromises.push(new Promise((resolve) => {
             const fileNameNumTerms = file.basename.split(TERMSPLITTERS).length;
 
@@ -155,4 +153,11 @@ export async function updateBlockIds(app: App, editor: Editor) {
     AutoDefinitionLink.statusBarEl.setText(`Updated block ids in ${Date.now() - startTime}ms`);
 
     AutoDefinitionLink.isUpdatingBlockIds = false;
+
+    // trigger a refresh of the links
+    app.workspace.iterateAllLeaves((leaf) => {
+        if (leaf.view instanceof MarkdownView) {
+            leaf.view.editor.setCursor(leaf.view.editor.getCursor());
+        }
+    });
 }

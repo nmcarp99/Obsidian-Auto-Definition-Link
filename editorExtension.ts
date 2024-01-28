@@ -36,9 +36,11 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
     }
 
     update(update: ViewUpdate) {
-        this.decorations = this.buildDecorations(update.view);
-        // if (update.docChanged || update.viewportChanged) {
-        // }
+        if (!AutoDefinitionLink.settings.realTimeLinking) return;
+
+        if (update.docChanged || update.viewportChanged || update.selectionSet) {
+            this.decorations = this.buildDecorations(update.view);
+        }
     }
 
     destroy() { }

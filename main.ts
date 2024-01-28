@@ -119,6 +119,8 @@ export default class AutoDefinitionLink extends Plugin {
         this.registerEditorSuggest(autoDefinitionLinkSuggest);
 
         this.registerEvent(this.app.vault.on('create', (file) => {
+            if (AutoDefinitionLink.settings.autoRefreshLinks === 'never') return;
+
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
@@ -127,6 +129,8 @@ export default class AutoDefinitionLink extends Plugin {
         }));
 
         this.registerEvent(this.app.vault.on('delete', (file) => {
+            if (AutoDefinitionLink.settings.autoRefreshLinks === 'never') return;
+
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
@@ -135,6 +139,8 @@ export default class AutoDefinitionLink extends Plugin {
         }));
 
         this.registerEvent(this.app.vault.on('rename', (file) => {
+            if (AutoDefinitionLink.settings.autoRefreshLinks === 'never') return;
+
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
@@ -143,7 +149,7 @@ export default class AutoDefinitionLink extends Plugin {
         }));
 
         this.registerEvent(this.app.vault.on('modify', (file) => {
-            console.log('modified');
+            if (AutoDefinitionLink.settings.autoRefreshLinks !== 'always') return;
 
             const editor = this.app.workspace.activeEditor?.editor;
 
@@ -154,6 +160,8 @@ export default class AutoDefinitionLink extends Plugin {
         }));
 
         this.registerMarkdownPostProcessor((el, ctx) => {
+            if (!AutoDefinitionLink.settings.realTimeLinking) return;
+
             function getTextRecursively(element: Element): { [text: string]: Node } {
                 let texts: {
                     [text: string]: Node
