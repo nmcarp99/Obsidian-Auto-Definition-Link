@@ -1,3 +1,5 @@
+import { autoDefinitionLinkEditorExtension } from "editorExtension";
+import { internalLinkElement, TERMSPLITTERS } from "shared";
 import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, Plugin, PluginSettingTab, Setting, TFile, debounce, parseYaml } from "obsidian";
 import { singular } from 'pluralize';
 
@@ -18,11 +20,6 @@ const YAMLREGEX = /---\n((?:.|\n)*?)\n---/gm;
  */
 const VALIDINTERRUPTERS = /^[^a-zA-Z-0-9]$/;
 
-/**
- * Characters that split up terms
- */
-const TERMSPLITTERS = /[^a-zA-Z0-9]/g;
-
 interface AutoDefinitionLinkSettings {
     useSuggestions: boolean;
     useAutoLink: boolean;
@@ -37,21 +34,7 @@ const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     subFolderDepth: -1,
 }
 
-const _updateBlockIds = debounce(updateBlockIds, 3000);
-
-function internalLinkElement(linkPath: string, text: string) {
-    const element = document.createElement('a');
-    element.dataset.tooltipPosition = 'top';
-    element.setAttribute('aria-label', linkPath);
-    element.setAttribute('data-href', linkPath);
-    element.href = linkPath;
-    element.classList.add('internal-link');
-    element.target = '_blank';
-    element.rel = 'noopener';
-    element.innerText = text;
-
-    return element;
-}
+const _updateBlockIds = debounce(updateBlockIds, 30000);
 
 async function updateBlockIds(app: App, editor: Editor) {
     if (AutoDefinitionLink.isUpdatingBlockIds) return;
@@ -395,10 +378,6 @@ export default class AutoDefinitionLink extends Plugin {
     public static getSuggestions(query: string, cursor: EditorPosition): SuggestionData[] {
         const suggestions: SuggestionData[] = [];
 
-        console.debug('getSuggestions');
-
-        const startTime = Date.now();
-
         for (let i = AutoDefinitionLink.maxNumTerms; i >= 1; i--) { // loop through each possible number of terms in a block id
             const substrLen = query.split(TERMSPLITTERS).slice(-i).reduce((acc, curr) => acc + curr.length, 0) + i - 1; // get the length of the last n characters
             const substr = query.split('').slice(-substrLen).join(''); // get the last n characters
@@ -416,8 +395,6 @@ export default class AutoDefinitionLink extends Plugin {
                 }))
             );
         }
-
-        console.debug(`getSuggestions took ${Date.now() - startTime}ms`);
 
         return suggestions;
     }
@@ -466,16 +443,40 @@ export default class AutoDefinitionLink extends Plugin {
         const autoDefinitionLinkSuggest = new AutoDefinitionLinkSuggest(this.app);
         this.registerEditorSuggest(autoDefinitionLinkSuggest);
 
-        this.registerEvent(
-            this.app.workspace.on("layout-change", async () => {
+        this.registerEvent(this.app.vault.on('create', (file) => {
+            const editor = this.app.workspace.activeEditor?.editor;
 
-                const editor = this.app.workspace.activeEditor?.editor;
+            if (!editor) return;
 
-                if (!editor) return;
+            updateBlockIds(this.app, editor);
+        }));
 
-                updateBlockIds(this.app, editor);
-            })
-        );
+        this.registerEvent(this.app.vault.on('delete', (file) => {
+            const editor = this.app.workspace.activeEditor?.editor;
+
+            if (!editor) return;
+
+            updateBlockIds(this.app, editor);
+        }));
+
+        this.registerEvent(this.app.vault.on('rename', (file) => {
+            const editor = this.app.workspace.activeEditor?.editor;
+
+            if (!editor) return;
+
+            updateBlockIds(this.app, editor);
+        }));
+
+        this.registerEvent(this.app.vault.on('modify', (file) => {
+            console.log('modified');
+
+            const editor = this.app.workspace.activeEditor?.editor;
+
+            if (!editor) return;
+
+            _updateBlockIds(this.app, editor);
+
+        }));
 
         this.registerMarkdownPostProcessor((el, ctx) => {
             function getTextRecursively(element: Element): { [text: string]: Node } {
@@ -486,8 +487,6 @@ export default class AutoDefinitionLink extends Plugin {
                 const children = Array.from(element.childNodes);
 
                 children.forEach(child => {
-                    console.log(child);
-
                     if (child instanceof HTMLElement && child.hasClass('internal-link')) return;
 
                     if (child.nodeType === Node.TEXT_NODE) {
@@ -510,10 +509,6 @@ export default class AutoDefinitionLink extends Plugin {
             const textMap = getTextRecursively(el);
 
             Object.entries(textMap).forEach(([text, element]) => {
-
-                console.log(text);
-                console.log(element);
-
                 // get separating indices
                 // reverse to get most terms (least likely to match) first
                 const indices: number[] = Array.from(text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
@@ -525,10 +520,6 @@ export default class AutoDefinitionLink extends Plugin {
                     // just use first suggestion for now
                     const suggestions = AutoDefinitionLink.getSuggestions(text.slice(0, i), { line: 0, ch: 0 });
 
-                    console.log(i);
-                    console.log(suggestions);
-                    console.log('-'.repeat(100));
-
                     if (!suggestions.length) return;
 
                     let usedSuggestion = false;
@@ -536,7 +527,7 @@ export default class AutoDefinitionLink extends Plugin {
                     suggestions.forEach((suggestion) => {
                         if (usedSuggestion) return;
 
-                        console.log('using suggestion');
+                        if (element.nodeValue?.slice(i - suggestion.text.length, i) !== suggestion.text) return; // make sure it hasn't been modified by some link before this
 
                         // make sure to leave the original node as the first child - do not replace it
                         const beginningText = element.textContent?.slice(0, i - suggestion.text.length) ?? '';
@@ -549,7 +540,6 @@ export default class AutoDefinitionLink extends Plugin {
 
                         element.parentNode?.insertAfter(document.createTextNode(endText), newLinkNode);
 
-                        // check if the suggestion was used before setting usedSuggestion to true !!!
                         usedSuggestion = true;
                     });
                 })
@@ -594,6 +584,8 @@ export default class AutoDefinitionLink extends Plugin {
         );
 
         this.addSettingTab(new AutoDefinitionLinkSettingTab(this.app, this));
+
+        this.registerEditorExtension(autoDefinitionLinkEditorExtension);
     }
 
     async loadSettings() {
