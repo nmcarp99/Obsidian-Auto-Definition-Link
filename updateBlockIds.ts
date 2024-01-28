@@ -80,7 +80,7 @@ export async function updateBlockIds(app: App, editor: Editor) {
             if (fileNameNumTerms > maxNumTerms) maxNumTerms = fileNameNumTerms;
 
             linkDestinations.push({
-                linkPath: file.basename,
+                linkPath: file.path,
                 searchValue: normalizeId(file.basename),
                 numTerms: fileNameNumTerms,
             });
