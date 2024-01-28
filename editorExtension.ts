@@ -10,7 +10,7 @@ import {
     WidgetType,
 } from "@codemirror/view";
 import AutoDefinitionLink from "main";
-import { TERMSPLITTERS, internalLinkElement } from "shared";
+import { SuggestionData, TERMSPLITTERS, internalLinkElement } from "shared";
 
 export class LinkWidget extends WidgetType {
     href: string;
@@ -48,7 +48,6 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
         const state = view.state;
 
         for (let curLineNumber = 1; curLineNumber <= state.doc.lines; curLineNumber++) {
-            const cursorLine = state.doc.lineAt(state.selection.main.head);
             const curLine = state.doc.line(curLineNumber);
 
             // get separating indices
@@ -56,6 +55,13 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
             const indices: number[] = Array.from(curLine.text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
             indices.push(curLine.text.length); // add the end of the string (so the last term can be matched)
             indices.reverse();
+
+            // we must search for links in reverse order, so that we can block off indices; then, we have to reverse and add them to the builder
+            const suggestionsToAdd: {
+                suggestion: SuggestionData,
+                from: number,
+                to: number,
+            }[] = [];
 
             // blocked off by linked text. for example: files: text, text cat; text: text cat; make sure it only links the longer one
             const blockedIndexIndices: number[] = [];
@@ -73,22 +79,31 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
                 if (blockedIndexIndices.includes(indexOfIndex)) return;
 
                 // depending on the number of terms in suggestion, block off the next indices
-                for (let j = 1; j <= suggestion.linkDestination.numTerms; j++) {
+                for (let j = 1; j < suggestion.linkDestination.numTerms; j++) {
                     if (blockedIndexIndices.includes(indexOfIndex + j)) continue;
                     blockedIndexIndices.push(indexOfIndex + j);
                 }
 
+                suggestionsToAdd.push({
+                    suggestion,
+                    from: curLine.from + i - suggestion.text.length,
+                    to: curLine.from + i,
+                });
+            });
+
+            // add suggestions to builder
+            suggestionsToAdd.reverse().forEach((suggestion) => {
                 builder.add(
-                    curLine.from + i - suggestion.text.length,
-                    curLine.from + i,
-                    (cursorLine.number === curLine.number ?
+                    suggestion.from,
+                    suggestion.to,
+                    (state.selection.main.from <= curLine.to && state.selection.main.to >= curLine.from ? // if the selection is in the line (starts before and ends after)
                         Decoration.mark({
                             attributes: {
                                 style: 'text-decoration: underline; text-decoration-color: #55f; text-decoration-thickness: 3px;'
                             }
                         }) :
                         Decoration.replace({
-                            widget: new LinkWidget(suggestion.linkDestination.linkPath, suggestion.text),
+                            widget: new LinkWidget(suggestion.suggestion.linkDestination.linkPath, suggestion.suggestion.text),
                         })
                     )
                 );
