@@ -1,6 +1,6 @@
-import AutoDefinitionLink from "main";
+import AutoDefinitionLink from "src/main";
 import { App, Editor, MarkdownView, debounce, parseYaml } from "obsidian";
-import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, normalizeId } from "shared";
+import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, normalizeId } from "src/shared";
 
 export const _updateBlockIds = debounce(updateBlockIds, 2000);
 
@@ -98,7 +98,7 @@ export async function updateBlockIds(app: App, editor: Editor) {
                 return resolve(0);
             }
 
-            app.vault.read(file)
+            app.vault.cachedRead(file)
                 .then((contents) => {
                     processFileContents(contents, file.path);
                     incrementStatusBar();

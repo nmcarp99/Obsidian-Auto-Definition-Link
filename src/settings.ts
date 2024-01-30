@@ -1,6 +1,6 @@
-import AutoDefinitionLink from "main";
+import AutoDefinitionLink from "src/main";
 import { App, PluginSettingTab, Setting } from "obsidian";
-import { updateBlockIds } from "updateBlockIds";
+import { updateBlockIds } from "src/updateBlockIds";
 
 export interface AutoDefinitionLinkSettings {
     useSuggestions: boolean;
@@ -107,10 +107,10 @@ export class AutoDefinitionLinkSettingTab extends PluginSettingTab {
         //     });
 
         new Setting(containerEl)
-            .setName('Refresh Links')
+            .setName('Refresh links')
             .setDesc('Refreshes the links in the current vault. This may take a couple of seconds.')
             .addButton((button) => {
-                button.setButtonText('Refresh Links')
+                button.setButtonText('Refresh links')
                     .onClick(async () => {
                         const editor = this.app.workspace.activeEditor?.editor;
 

@@ -1,6 +1,6 @@
-import AutoDefinitionLink from "main";
+import AutoDefinitionLink from "src/main";
 import { MarkdownPostProcessorContext } from "obsidian";
-import { TERMSPLITTERS, internalLinkElement } from "shared";
+import { findSuggestionsInText, internalLinkElement } from "src/shared";
 
 export function autoDefinitionLinkPostProcessor(el: HTMLElement, ctx: MarkdownPostProcessorContext) {
     if (!AutoDefinitionLink.settings.realTimeLinking) return;
@@ -35,39 +35,19 @@ export function autoDefinitionLinkPostProcessor(el: HTMLElement, ctx: MarkdownPo
     const textMap = getTextRecursively(el);
 
     Object.entries(textMap).forEach(([text, element]) => {
-        // get separating indices
-        // reverse to get most terms (least likely to match) first
-        const indices: number[] = Array.from(text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
-        indices.push(text.length); // add the end of the string (so the last term can be matched)
-        indices.reverse();
+        const suggestions = findSuggestionsInText(text).reverse();
 
-        // loop through separating indices
-        indices.forEach(i => {
-            // just use first suggestion for now
-            const suggestions = AutoDefinitionLink.getSuggestions(text.slice(0, i), { line: 0, ch: 0 });
+        suggestions.forEach((suggestion) => {
+            // make sure to leave the original node as the first child - do not replace it
+            const beginningText = element.textContent?.slice(0, suggestion.from) ?? '';
+            const endText = element.textContent?.slice(suggestion.to) ?? '';
 
-            if (!suggestions.length) return;
+            element.nodeValue = beginningText;
+            const newLinkNode = element.parentNode?.insertAfter(internalLinkElement(suggestion.suggestion.linkDestination.linkPath, suggestion.suggestion.text), element);
 
-            let usedSuggestion = false;
+            if (!newLinkNode) throw new Error('newLinkNode is null');
 
-            suggestions.forEach((suggestion) => {
-                if (usedSuggestion) return;
-
-                if (element.nodeValue?.slice(i - suggestion.text.length, i) !== suggestion.text) return; // make sure it hasn't been modified by some link before this
-
-                // make sure to leave the original node as the first child - do not replace it
-                const beginningText = element.textContent?.slice(0, i - suggestion.text.length) ?? '';
-                const endText = element.textContent?.slice(i) ?? '';
-
-                element.nodeValue = beginningText;
-                const newLinkNode = element.parentNode?.insertAfter(internalLinkElement(suggestion.linkDestination.linkPath, suggestion.text), element);
-
-                if (!newLinkNode) throw new Error('newLinkNode is null');
-
-                element.parentNode?.insertAfter(document.createTextNode(endText), newLinkNode);
-
-                usedSuggestion = true;
-            });
-        })
+            element.parentNode?.insertAfter(document.createTextNode(endText), newLinkNode);
+        });
     });
 }

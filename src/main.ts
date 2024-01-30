@@ -1,10 +1,10 @@
-import { autoDefinitionLinkEditorExtension } from "editorExtension";
-import { TERMSPLITTERS, SuggestionData, LinkDestination, BLOCKIDREGEX, normalizeId, VALIDINTERRUPTERS } from "shared";
+import { autoDefinitionLinkEditorExtension } from "src/editorExtension";
+import { TERMSPLITTERS, SuggestionData, LinkDestination, BLOCKIDREGEX, normalizeId, VALIDINTERRUPTERS } from "src/shared";
 import { Editor, EditorPosition, Plugin } from "obsidian";
-import { _updateBlockIds, updateBlockIds } from "updateBlockIds";
-import { AutoDefinitionLinkSuggest } from "suggestions";
-import { AutoDefinitionLinkSettingTab, AutoDefinitionLinkSettings, DEFAULT_SETTINGS } from "settings";
-import { autoDefinitionLinkPostProcessor } from "postProcessor";
+import { _updateBlockIds, updateBlockIds } from "src/updateBlockIds";
+import { AutoDefinitionLinkSuggest } from "src/suggestions";
+import { AutoDefinitionLinkSettingTab, AutoDefinitionLinkSettings, DEFAULT_SETTINGS } from "src/settings";
+import { autoDefinitionLinkPostProcessor } from "src/postProcessor";
 
 export default class AutoDefinitionLink extends Plugin {
     public static linkDestinations: LinkDestination[] = [];
@@ -100,7 +100,7 @@ export default class AutoDefinitionLink extends Plugin {
         // add refresh command
         this.addCommand({
             id: 'refresh-block-ids',
-            name: 'Refresh Links',
+            name: 'Refresh links',
             callback: () => {
                 const editor = this.app.workspace.activeEditor?.editor;
 

@@ -6,6 +6,5 @@
 	"description": "Automatically converts text to definition links within the current folder when you type them.",
 	"author": "Nolan Carpenter",
 	"authorUrl": "https://github.com/nmcarp99",
-	"fundingUrl": "https://github.com/nmcarp99",
 	"isDesktopOnly": false
 }

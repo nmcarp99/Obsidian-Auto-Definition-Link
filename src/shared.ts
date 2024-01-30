@@ -1,3 +1,4 @@
+import AutoDefinitionLink from "src/main";
 import { EditorPosition } from "obsidian";
 import { singular } from "pluralize";
 
@@ -45,6 +46,42 @@ export function internalLinkElement(linkPath: string, text: string) {
     element.innerText = text;
 
     return element;
+}
+
+export function findSuggestionsInText(text: string) {
+    const indices: number[] = Array.from(text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
+
+    // add the end of the string (so the last term can be matched)
+    indices.push(text.length);
+    indices.reverse();
+
+    const suggestionsToAdd: {
+        suggestion: SuggestionData,
+        from: number,
+        to: number,
+    }[] = [];
+
+    const blockedIndexIndices: number[] = [];
+    indices.forEach((i, indexOfIndex) => {
+        const suggestions = AutoDefinitionLink.getSuggestions(text.slice(0, i), { line: 0, ch: 0 });
+        if (!suggestions.length)
+            return;
+        const suggestion = suggestions[0];
+        if (blockedIndexIndices.includes(indexOfIndex))
+            return;
+        for (let j = 1; j < suggestion.linkDestination.numTerms; j++) {
+            if (blockedIndexIndices.includes(indexOfIndex + j))
+                continue;
+            blockedIndexIndices.push(indexOfIndex + j);
+        }
+        suggestionsToAdd.push({
+            suggestion,
+            from: i - suggestion.text.length,
+            to: i
+        });
+    });
+
+    return suggestionsToAdd.reverse();
 }
 
 export function normalizeId(id: string): string {

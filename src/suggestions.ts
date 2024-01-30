@@ -1,7 +1,7 @@
-import AutoDefinitionLink from "main";
+import AutoDefinitionLink from "src/main";
 import { App, Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo, TFile } from "obsidian";
-import { BLOCKIDREGEX, SuggestionData } from "shared";
-import { _updateBlockIds } from "updateBlockIds";
+import { BLOCKIDREGEX, SuggestionData } from "src/shared";
+import { _updateBlockIds } from "src/updateBlockIds";
 
 export class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
     constructor(app: App) {

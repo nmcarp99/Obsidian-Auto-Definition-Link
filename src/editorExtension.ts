@@ -9,8 +9,8 @@ import {
     ViewUpdate,
     WidgetType,
 } from "@codemirror/view";
-import AutoDefinitionLink from "main";
-import { SuggestionData, TERMSPLITTERS, internalLinkElement } from "shared";
+import AutoDefinitionLink from "src/main";
+import { findSuggestionsInText, internalLinkElement } from "src/shared";
 
 export class LinkWidget extends WidgetType {
     href: string;
@@ -52,52 +52,10 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
         for (let curLineNumber = 1; curLineNumber <= state.doc.lines; curLineNumber++) {
             const curLine = state.doc.line(curLineNumber);
 
-            // get separating indices
-            // reverse to get most terms (least likely to match) first
-            const indices: number[] = Array.from(curLine.text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
-            indices.push(curLine.text.length); // add the end of the string (so the last term can be matched)
-            indices.reverse();
-
-            // we must search for links in reverse order, so that we can block off indices; then, we have to reverse and add them to the builder
-            const suggestionsToAdd: {
-                suggestion: SuggestionData,
-                from: number,
-                to: number,
-            }[] = [];
-
-            // blocked off by linked text. for example: files: text, text cat; text: text cat; make sure it only links the longer one
-            const blockedIndexIndices: number[] = [];
-
-            // loop through separating indices
-            indices.forEach((i, indexOfIndex) => {
-                // just use first suggestion for now
-                const suggestions = AutoDefinitionLink.getSuggestions(curLine.text.slice(0, i), { line: 0, ch: 0 });
-
-                if (!suggestions.length) return;
-
-                const suggestion = suggestions[0];
-
-                // if the suggestion is blocked, skip it
-                if (blockedIndexIndices.includes(indexOfIndex)) return;
-
-                // depending on the number of terms in suggestion, block off the next indices
-                for (let j = 1; j < suggestion.linkDestination.numTerms; j++) {
-                    if (blockedIndexIndices.includes(indexOfIndex + j)) continue;
-                    blockedIndexIndices.push(indexOfIndex + j);
-                }
-
-                suggestionsToAdd.push({
-                    suggestion,
-                    from: curLine.from + i - suggestion.text.length,
-                    to: curLine.from + i,
-                });
-            });
-
-            // add suggestions to builder
-            suggestionsToAdd.reverse().forEach((suggestion) => {
+            findSuggestionsInText(curLine.text).forEach((suggestion) => {
                 builder.add(
-                    suggestion.from,
-                    suggestion.to,
+                    suggestion.from + curLine.from,
+                    suggestion.to + curLine.from,
                     (state.selection.main.from <= curLine.to && state.selection.main.to >= curLine.from ? // if the selection is in the line (starts before and ends after)
                         Decoration.mark({
                             attributes: {
