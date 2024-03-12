@@ -25,6 +25,7 @@
 	},
 	"dependencies": {
 		"@codemirror/view": "^6.23.1",
-		"pluralize": "^8.0.0"
+		"pluralize": "^8.0.0",
+		"stemmer": "^2.0.1"
 	}
 }

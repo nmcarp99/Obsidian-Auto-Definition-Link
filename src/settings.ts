@@ -9,6 +9,7 @@ export interface AutoDefinitionLinkSettings {
     subFolderDepth: number;
     realTimeLinking: boolean;
     autoRefreshLinks: 'always' | 'main' | 'never';
+    lemmatizeTerms: boolean;
 }
 
 export const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     subFolderDepth: -1,
     realTimeLinking: true,
     autoRefreshLinks: 'always',
+    lemmatizeTerms: true,
 }
 
 export class AutoDefinitionLinkSettingTab extends PluginSettingTab {
@@ -51,6 +53,17 @@ export class AutoDefinitionLinkSettingTab extends PluginSettingTab {
                 toggle.setValue(AutoDefinitionLink.settings.useAutoLink)
                     .onChange(async (value) => {
                         AutoDefinitionLink.settings.useAutoLink = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
+            .setName('Lemmatize Terms')
+            .setDesc('Lemmatize terms in the search value. This will make the search value more flexible, but may also make it less accurate.')
+            .addToggle((toggle) => {
+                toggle.setValue(AutoDefinitionLink.settings.lemmatizeTerms)
+                    .onChange(async (value) => {
+                        AutoDefinitionLink.settings.lemmatizeTerms = value;
                         await this.plugin.saveSettings();
                     });
             });

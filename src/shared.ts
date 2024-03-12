@@ -1,6 +1,6 @@
 import AutoDefinitionLink from "src/main";
 import { EditorPosition } from "obsidian";
-import { singular } from "pluralize";
+import {stemmer} from "stemmer";
 
 /**
  * Characters that split up terms
@@ -84,6 +84,10 @@ export function findSuggestionsInText(text: string) {
     return suggestionsToAdd.reverse();
 }
 
+function lemmatizeIfEnabled(term: string): string {
+    return AutoDefinitionLink.settings.lemmatizeTerms ? stemmer(term) : term;
+}
+
 export function normalizeId(id: string): string {
-    return id.toLowerCase().split(TERMSPLITTERS).map((word) => singular(word)).join('-');
+    return id.toLowerCase().split(TERMSPLITTERS).map((word) => lemmatizeIfEnabled(word)).join('-');
 }
