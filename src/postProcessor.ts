@@ -59,6 +59,8 @@ export function autoDefinitionLinkPostProcessor(el: HTMLElement, ctx: MarkdownPo
         const footerElement = Array.from(document.querySelectorAll('.mod-footer')).filter(footer => el.parentElement?.contains(footer))[0];
         const headerElement = Array.from(document.querySelectorAll('.mod-header')).filter(header => el.parentElement?.contains(header))[0];
 
+        (window as any).x = el;
+
         if (!footerElement || !headerElement) return;
 
         footerObserver.disconnect();
@@ -66,12 +68,10 @@ export function autoDefinitionLinkPostProcessor(el: HTMLElement, ctx: MarkdownPo
         if (!el.matches('.mod-header + div')) return; // only run for the first node after the header (so we don't run multiple times on the same file)
 
         // only update if we've already added backlinks
-        if (document.querySelector('.mod-footer > div[is-backlinks="true"]')?.getAttr('is-backlinks')) {
+        const existingBacklinksDiv = footerElement.querySelector('div[is-backlinks="true"]');
+        if (existingBacklinksDiv) {
             getBackLinks(app).then((backlinks) => {
-                const backlinksDiv = document.querySelector('.mod-footer > div[is-backlinks="true"]');
-                if (!backlinksDiv) return;
-
-                populateBacklinkDiv(backlinksDiv, backlinks);
+                populateBacklinkDiv(existingBacklinksDiv, backlinks);
             });
             return;
         }
