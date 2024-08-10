@@ -160,7 +160,7 @@ export default class AutoDefinitionLink extends Plugin {
 
         }));
 
-        this.registerMarkdownPostProcessor(autoDefinitionLinkPostProcessor);
+        this.registerMarkdownPostProcessor((el, ctx) => autoDefinitionLinkPostProcessor(el, ctx, this.app));
 
         this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
             this.lastKey = evt.key;

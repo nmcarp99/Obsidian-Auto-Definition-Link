@@ -1,6 +1,6 @@
 import AutoDefinitionLink from "src/main";
 import { EditorPosition } from "obsidian";
-import {stemmer} from "stemmer";
+import { stemmer } from "stemmer";
 
 /**
  * Characters that split up terms
