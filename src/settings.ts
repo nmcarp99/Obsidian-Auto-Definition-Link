@@ -10,6 +10,7 @@ export interface AutoDefinitionLinkSettings {
     realTimeLinking: boolean;
     autoRefreshLinks: 'always' | 'main' | 'never';
     lemmatizeTerms: boolean;
+    autoLoadRealTimeBacklinks: boolean;
 }
 
 export const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     realTimeLinking: true,
     autoRefreshLinks: 'always',
     lemmatizeTerms: true,
+    autoLoadRealTimeBacklinks: true,
 }
 
 export class AutoDefinitionLinkSettingTab extends PluginSettingTab {
@@ -86,6 +88,17 @@ export class AutoDefinitionLinkSettingTab extends PluginSettingTab {
                 toggle.setValue(AutoDefinitionLink.settings.realTimeLinking)
                     .onChange(async (value) => {
                         AutoDefinitionLink.settings.realTimeLinking = value;
+                        await this.plugin.saveSettings();
+                    });
+            });
+
+        new Setting(containerEl)
+            .setName('Auto load real-time backlinks')
+            .setDesc('If enabled, the plugin will automatically load backlinks when a new file is opened. This may make files feel sluggish to open, and only applies to real-time linking.')
+            .addToggle((toggle) => {
+                toggle.setValue(AutoDefinitionLink.settings.autoLoadRealTimeBacklinks)
+                    .onChange(async (value) => {
+                        AutoDefinitionLink.settings.autoLoadRealTimeBacklinks = value;
                         await this.plugin.saveSettings();
                     });
             });
