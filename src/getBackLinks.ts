@@ -1,11 +1,12 @@
 import { App, TFile } from "obsidian";
-import { findSuggestionsInText, normalizeId, retrieveAliasesFromContent } from "./shared";
+import { findSuggestionsInText, normalizeId, retrieveAliasesFromContent, retrieveBlockMatchesFromContent } from "./shared";
 
 export function getBackLinks(app: App) {
     return new Promise<TFile[]>((resolveWithBackLinks) => {
-        // get ids to match against (active file basename and aliases)
+        // get ids to match against (active file basename, block matches, and aliases)
         const ids = [app.workspace.activeEditor?.file?.basename || '', // the active file basename
-        ...retrieveAliasesFromContent(app.workspace.activeEditor?.editor?.getValue() ?? '') || []] // the active file aliases
+            ...retrieveBlockMatchesFromContent(app.workspace.activeEditor?.editor?.getValue() ?? '') || [], // the active file block ids
+            ...retrieveAliasesFromContent(app.workspace.activeEditor?.editor?.getValue() ?? '') || []] // the active file aliases
             .map(normalizeId); // normalize them to match the format used in the suggestions
 
         const files = app.vault.getMarkdownFiles();

@@ -1,6 +1,6 @@
 import AutoDefinitionLink from "src/main";
 import { App, Editor, MarkdownView, debounce, parseYaml } from "obsidian";
-import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, retrieveAliasesFromContent, normalizeId } from "src/shared";
+import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, retrieveAliasesFromContent, normalizeId, retrieveBlockMatchesFromContent } from "src/shared";
 
 export const _updateBlockIds = debounce(updateBlockIds, 2000);
 
@@ -18,36 +18,46 @@ export async function updateBlockIds(app: App, editor: Editor) {
         const linkDestinations: LinkDestination[] = [];
 
         const processFileContents = (contents: string, path: string) => {
-            const matches = contents.matchAll(BLOCKIDREGEX);
 
-            Array.from(matches).forEach((match) => {
-                const blockNumTerms = match[1].split(TERMSPLITTERS).length;
+            // process the file contents to find block ids
+            (() => {
+                const blockMatches = retrieveBlockMatchesFromContent(contents);
+                if (!blockMatches) return; // no block ids found
 
-                linkDestinations.push({
-                    linkPath: path + '#^' + match[1],
-                    searchValue: normalizeId(match[1]),
-                    numTerms: blockNumTerms,
-                });
+                linkDestinations.push(
+                    ...blockMatches.map((match: string) => {
+                        const blockNumTerms = match.split(TERMSPLITTERS).length;
 
-                if (blockNumTerms > maxNumTerms) maxNumTerms = blockNumTerms;
-            });
+                        if (blockNumTerms > maxNumTerms) maxNumTerms = blockNumTerms;
 
-            const aliases = retrieveAliasesFromContent(contents);
-            if (!aliases) return; // no aliases found
+                        return {
+                            linkPath: path + '#^' + match,
+                            searchValue: normalizeId(match),
+                            numTerms: blockNumTerms
+                        }
+                    })
+                );
+            })();
 
-            linkDestinations.push(
-                ...aliases.map((alias: string) => {
-                    const aliasNumTerms = alias.split(TERMSPLITTERS).length;
+            // process the file contents to find aliases
+            (() => {
+                const aliases = retrieveAliasesFromContent(contents);
+                if (!aliases) return; // no aliases found
 
-                    if (aliasNumTerms > maxNumTerms) maxNumTerms = aliasNumTerms;
+                linkDestinations.push(
+                    ...aliases.map((alias: string) => {
+                        const aliasNumTerms = alias.split(TERMSPLITTERS).length;
 
-                    return {
-                        linkPath: path,
-                        searchValue: normalizeId(alias),
-                        numTerms: aliasNumTerms
-                    }
-                })
-            );
+                        if (aliasNumTerms > maxNumTerms) maxNumTerms = aliasNumTerms;
+
+                        return {
+                            linkPath: path,
+                            searchValue: normalizeId(alias),
+                            numTerms: aliasNumTerms
+                        }
+                    })
+                );
+            })();
         }
 
         const activeFile = app.workspace.getActiveFile();

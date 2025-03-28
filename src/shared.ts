@@ -95,6 +95,12 @@ export function retrieveAliasesFromContent(contents: string): string[] | undefin
     return aliases;
 }
 
+export function retrieveBlockMatchesFromContent(contents: string): string[] | undefined {
+    const matches = contents.matchAll(BLOCKIDREGEX);
+
+    return Array.from(matches).map(match => match[1]); // return an array of block ids
+}
+
 function lemmatizeIfEnabled(term: string): string {
     return AutoDefinitionLink.settings.lemmatizeTerms ? stemmer(term) : term;
 }
