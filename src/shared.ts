@@ -1,5 +1,5 @@
 import AutoDefinitionLink from "src/main";
-import { EditorPosition } from "obsidian";
+import { EditorPosition, parseYaml, TFile } from "obsidian";
 import { stemmer } from "stemmer";
 
 /**
@@ -82,6 +82,17 @@ export function findSuggestionsInText(text: string) {
     });
 
     return suggestionsToAdd.reverse();
+}
+
+export function retrieveAliasesFromContent(contents: string): string[] | undefined {
+    // match aliases of file name
+    const properties = Array.from(contents.matchAll(YAMLREGEX));
+    if (!properties || properties.length === 0 || properties[0].length < 2) return;
+
+    const aliases = parseYaml(properties[0][1]).aliases as string[];
+    if (!aliases) return;
+
+    return aliases;
 }
 
 function lemmatizeIfEnabled(term: string): string {

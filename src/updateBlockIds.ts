@@ -1,6 +1,6 @@
 import AutoDefinitionLink from "src/main";
 import { App, Editor, MarkdownView, debounce, parseYaml } from "obsidian";
-import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, normalizeId } from "src/shared";
+import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, retrieveAliasesFromContent, normalizeId } from "src/shared";
 
 export const _updateBlockIds = debounce(updateBlockIds, 2000);
 
@@ -32,12 +32,8 @@ export async function updateBlockIds(app: App, editor: Editor) {
                 if (blockNumTerms > maxNumTerms) maxNumTerms = blockNumTerms;
             });
 
-            // match aliases of file name
-            const properties = Array.from(contents.matchAll(YAMLREGEX));
-            if (!properties || properties.length === 0 || properties[0].length < 2) return;
-
-            const aliases = parseYaml(properties[0][1]).aliases as string[];
-            if (!aliases) return;
+            const aliases = retrieveAliasesFromContent(contents);
+            if (!aliases) return; // no aliases found
 
             linkDestinations.push(
                 ...aliases.map((alias: string) => {
