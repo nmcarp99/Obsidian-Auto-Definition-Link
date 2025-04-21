@@ -1,0 +1,3 @@
+.cm-blockid:has(+*+*[contenteditable="false"]),.cm-blockid+*+*[contenteditable="false"] {
+    display: none;
+}
