@@ -10,7 +10,7 @@ export const TERMSPLITTERS = /[^a-zA-Z0-9]/g;
 /**
  * Regex used to find if text ends in a block id (e.g. `asdfasdf ^block-id` would match `^block-id`)
  */
-export const BLOCKIDREGEX = / \^([a-zA-Z0-9-]+$)/gm;
+export const BLOCKIDREGEX = /(?: |^)\^([a-zA-Z0-9-]+$)/gm;
 
 /**
  * Regex used to find YAML front matter
