@@ -1,4 +1,4 @@
-import { RangeSetBuilder } from "@codemirror/state";
+import { Line, RangeSetBuilder } from "@codemirror/state";
 import {
     Decoration,
     DecorationSet,
@@ -10,7 +10,7 @@ import {
     WidgetType,
 } from "@codemirror/view";
 import AutoDefinitionLink from "src/main";
-import { findSuggestionsInText, internalLinkElement } from "src/shared";
+import { findSuggestionsInText, internalLinkElement, suggestionCache } from "src/shared";
 
 export class LinkWidget extends WidgetType {
     href: string;
@@ -49,9 +49,12 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
         const builder = new RangeSetBuilder<Decoration>();
         const state = view.state;
 
-        for (let curLineNumber = 1; curLineNumber <= state.doc.lines; curLineNumber++) {
-            const curLine = state.doc.line(curLineNumber);
+        const lineArray: Line[] = new Array(state.doc.lines).fill(null).map((_, i) => state.doc.line(i + 1));
+        
+        // remove all unused cache entries
+        suggestionCache.forEach((value, key) => !lineArray.some(line => line.text === key) && suggestionCache.delete(key));
 
+        lineArray.forEach(curLine => {
             findSuggestionsInText(curLine.text).forEach((suggestion) => {
                 builder.add(
                     suggestion.from + curLine.from,
@@ -68,7 +71,7 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
                     )
                 );
             });
-        }
+        });
 
         return builder.finish();
     }

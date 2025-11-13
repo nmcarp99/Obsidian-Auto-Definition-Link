@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS: AutoDefinitionLinkSettings = {
     searchFileContent: true,
     subFolderDepth: -1,
     realTimeLinking: true,
-    autoRefreshLinks: 'always',
+    autoRefreshLinks: 'main',
     lemmatizeTerms: true,
     autoLoadRealTimeBacklinks: true,
 }

@@ -48,7 +48,11 @@ export function internalLinkElement(linkPath: string, text: string) {
     return element;
 }
 
+export const suggestionCache: Map<string, { suggestion: SuggestionData, from: number, to: number }[]> = new Map();
+
 export function findSuggestionsInText(text: string) {
+    if (suggestionCache.has(text)) return suggestionCache.get(text)!;
+
     const indices: number[] = Array.from(text.matchAll(TERMSPLITTERS)).map((match) => match.index ?? 0);
 
     // add the end of the string (so the last term can be matched)
@@ -81,7 +85,11 @@ export function findSuggestionsInText(text: string) {
         });
     });
 
-    return suggestionsToAdd.reverse();
+    const results = suggestionsToAdd.reverse();
+
+    suggestionCache.set(text, results);
+
+    return results;
 }
 
 export function retrieveAliasesFromContent(contents: string): string[] | undefined {

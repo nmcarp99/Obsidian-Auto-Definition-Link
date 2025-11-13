@@ -1,6 +1,6 @@
 import AutoDefinitionLink from "src/main";
 import { App, Editor, MarkdownView, debounce, parseYaml } from "obsidian";
-import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, retrieveAliasesFromContent, normalizeId, retrieveBlockMatchesFromContent } from "src/shared";
+import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, retrieveAliasesFromContent, normalizeId, retrieveBlockMatchesFromContent, suggestionCache } from "src/shared";
 
 export const _updateBlockIds = debounce(updateBlockIds, 2000);
 
@@ -8,6 +8,8 @@ export async function updateBlockIds(app: App, editor: Editor) {
     try {
         if (AutoDefinitionLink.isUpdatingBlockIds) return;
         AutoDefinitionLink.isUpdatingBlockIds = true;
+
+        suggestionCache.clear();
 
         AutoDefinitionLink.statusBarEl.setText('Searching files...');
 
