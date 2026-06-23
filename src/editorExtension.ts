@@ -23,7 +23,7 @@ export class LinkWidget extends WidgetType {
         this.text = text;
     }
 
-    toDOM(view: EditorView): HTMLElement {
+    toDOM(_view: EditorView): HTMLElement {
         return internalLinkElement(this.href, this.text);
     }
 }
@@ -52,7 +52,7 @@ class AutoDefinitionLinkEditorExtension implements PluginValue {
         const lineArray: Line[] = new Array(state.doc.lines).fill(null).map((_, i) => state.doc.line(i + 1));
         
         // remove all unused cache entries
-        suggestionCache.forEach((value, key) => !lineArray.some(line => line.text === key) && suggestionCache.delete(key));
+        suggestionCache.forEach((_value, key) => !lineArray.some(line => line.text === key) && suggestionCache.delete(key));
 
         lineArray.forEach(curLine => {
             findSuggestionsInText(curLine.text).forEach((suggestion) => {

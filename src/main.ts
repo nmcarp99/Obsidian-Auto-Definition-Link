@@ -80,20 +80,21 @@ export default class AutoDefinitionLink extends Plugin {
     lastKeyShift: boolean;
 
     async onload() {
-        AutoDefinitionLink.statusBarEl = this.addStatusBarItem().createEl('span', { text: 'Starting up...' });
+        AutoDefinitionLink.statusBarEl = this.addStatusBarItem().createSpan({ text: 'Starting up...' });
 
         await this.loadSettings();
+        const activeDocument = this.app.workspace.containerEl.ownerDocument;
 
         // *** start add refresh button ***
         const refreshButton = this.addStatusBarItem();
         refreshButton.addClass('mod-clickable');
-        refreshButton.createEl('span', { text: '↻' });
+        refreshButton.createSpan({ text: '↻' });
         refreshButton.onclick = () => {
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
 
-            updateBlockIds(this.app, editor);
+            void updateBlockIds(this.app, editor);
         };
         // *** end add refresh button ***
 
@@ -106,50 +107,50 @@ export default class AutoDefinitionLink extends Plugin {
 
                 if (!editor) return;
 
-                updateBlockIds(this.app, editor);
+                void updateBlockIds(this.app, editor);
             },
         });
 
         const editor = this.app.workspace.activeEditor?.editor;
 
         if (editor) {
-            updateBlockIds(this.app, editor);
+            void updateBlockIds(this.app, editor);
         }
 
         const autoDefinitionLinkSuggest = new AutoDefinitionLinkSuggest(this.app);
         this.registerEditorSuggest(autoDefinitionLinkSuggest);
 
-        this.registerEvent(this.app.vault.on('create', (file) => {
+        this.registerEvent(this.app.vault.on('create', (_file) => {
             if (AutoDefinitionLink.settings.autoRefreshLinks === 'never') return;
 
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
 
-            updateBlockIds(this.app, editor);
+            void updateBlockIds(this.app, editor);
         }));
 
-        this.registerEvent(this.app.vault.on('delete', (file) => {
+        this.registerEvent(this.app.vault.on('delete', (_file) => {
             if (AutoDefinitionLink.settings.autoRefreshLinks === 'never') return;
 
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
 
-            updateBlockIds(this.app, editor);
+            void updateBlockIds(this.app, editor);
         }));
 
-        this.registerEvent(this.app.vault.on('rename', (file) => {
+        this.registerEvent(this.app.vault.on('rename', (_file) => {
             if (AutoDefinitionLink.settings.autoRefreshLinks === 'never') return;
 
             const editor = this.app.workspace.activeEditor?.editor;
 
             if (!editor) return;
 
-            updateBlockIds(this.app, editor);
+            void updateBlockIds(this.app, editor);
         }));
 
-        this.registerEvent(this.app.vault.on('modify', (file) => {
+        this.registerEvent(this.app.vault.on('modify', (_file) => {
             if (AutoDefinitionLink.settings.autoRefreshLinks !== 'always') return;
 
             const editor = this.app.workspace.activeEditor?.editor;
@@ -162,7 +163,7 @@ export default class AutoDefinitionLink extends Plugin {
 
         this.registerMarkdownPostProcessor((el, ctx) => autoDefinitionLinkPostProcessor(el, ctx, this.app));
 
-        this.registerDomEvent(document, 'keydown', (evt: KeyboardEvent) => {
+        this.registerDomEvent(activeDocument, 'keydown', (evt: KeyboardEvent) => {
             this.lastKey = evt.key;
             this.lastKeyShift = evt.shiftKey;
         });

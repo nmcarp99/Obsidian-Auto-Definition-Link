@@ -142,7 +142,7 @@ export class AutoDefinitionLinkSettingTab extends PluginSettingTab {
 
                         if (!editor) return;
 
-                        updateBlockIds(this.app, editor);
+                        void updateBlockIds(this.app, editor);
                     });
             });
     }
