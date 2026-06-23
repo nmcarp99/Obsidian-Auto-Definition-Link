@@ -19,7 +19,7 @@ export function getBackLinks(app: App) {
             if (file === app.workspace.activeEditor?.file) return; // don't search the active file
 
             fileSearchPromises.push(new Promise(resolve => {
-                app.vault.cachedRead(file)
+                void app.vault.cachedRead(file)
                     .then(contents => {
                         contents.split('\n').forEach(line => {
                             if (filesWithSuggestions.includes(file)) return; // already found a suggestion in this file)
@@ -30,11 +30,12 @@ export function getBackLinks(app: App) {
                         });
 
                         resolve();
-                    });
+                    })
+                    .catch(() => resolve());
             }));
         });
 
-        Promise.all(fileSearchPromises).then(() => {
+        void Promise.all(fileSearchPromises).then(() => {
             resolveWithBackLinks(filesWithSuggestions);
         });
     });

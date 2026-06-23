@@ -12,7 +12,7 @@ export class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         return AutoDefinitionLink.getSuggestions(context.query, context.editor.getCursor());
     }
 
-    onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
+    onTrigger(cursor: EditorPosition, editor: Editor, _file: TFile | null): EditorSuggestTriggerInfo | null {
         if (!AutoDefinitionLink.settings.useSuggestions) return null;
         if (AutoDefinitionLink.linkDestinations.length === 0) return null;
 
@@ -39,7 +39,7 @@ export class AutoDefinitionLinkSuggest extends EditorSuggest<SuggestionData> {
         el.setText(item.linkDestination.linkPath);
     }
 
-    selectSuggestion(item: SuggestionData, evt: MouseEvent | KeyboardEvent): void {
+    selectSuggestion(item: SuggestionData, _evt: MouseEvent | KeyboardEvent): void {
         this.close();
 
         const editor = this.app.workspace.activeEditor?.editor;

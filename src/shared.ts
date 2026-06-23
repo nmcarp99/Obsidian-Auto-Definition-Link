@@ -1,5 +1,5 @@
 import AutoDefinitionLink from "src/main";
-import { EditorPosition, parseYaml, TFile } from "obsidian";
+import { EditorPosition, parseYaml } from "obsidian";
 import { stemmer } from "stemmer";
 
 /**
@@ -35,7 +35,7 @@ export type SuggestionData = {
 };
 
 export function internalLinkElement(linkPath: string, text: string) {
-    const element = document.createElement('a');
+    const element = createEl('a');
     element.dataset.tooltipPosition = 'top';
     element.setAttribute('aria-label', linkPath);
     element.setAttribute('data-href', linkPath);

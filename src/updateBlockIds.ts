@@ -1,6 +1,6 @@
 import AutoDefinitionLink from "src/main";
-import { App, Editor, MarkdownView, debounce, parseYaml } from "obsidian";
-import { BLOCKIDREGEX, LinkDestination, TERMSPLITTERS, YAMLREGEX, retrieveAliasesFromContent, normalizeId, retrieveBlockMatchesFromContent, suggestionCache } from "src/shared";
+import { App, Editor, MarkdownView, debounce } from "obsidian";
+import { LinkDestination, TERMSPLITTERS, retrieveAliasesFromContent, normalizeId, retrieveBlockMatchesFromContent, suggestionCache } from "src/shared";
 
 export const _updateBlockIds = debounce(updateBlockIds, 2000);
 
@@ -82,7 +82,7 @@ export async function updateBlockIds(app: App, editor: Editor) {
             AutoDefinitionLink.statusBarEl.setText(`Searching files... ${filesProcessed}/${files.length} processed (${timeEstimate}s)`);
         }
 
-        files.forEach((file, i) => {
+        files.forEach((file, _i) => {
             fileProcessingPromises.push(new Promise((resolve) => {
                 const fileNameNumTerms = file.basename.split(TERMSPLITTERS).length;
 
@@ -107,9 +107,13 @@ export async function updateBlockIds(app: App, editor: Editor) {
                     return resolve(0);
                 }
 
-                app.vault.cachedRead(file)
+                void app.vault.cachedRead(file)
                     .then((contents) => {
                         processFileContents(contents, file.path);
+                        incrementStatusBar();
+                        return resolve(0);
+                    })
+                    .catch(() => {
                         incrementStatusBar();
                         return resolve(0);
                     });
