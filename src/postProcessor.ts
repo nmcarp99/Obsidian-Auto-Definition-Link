@@ -1,10 +1,13 @@
 import AutoDefinitionLink from "src/main";
-import { activeDocument, activeWindow, App, MarkdownPostProcessorContext, TFile } from "obsidian";
+import { App, MarkdownPostProcessorContext, TFile } from "obsidian";
 import { findSuggestionsInText, internalLinkElement } from "src/shared";
 import { getBackLinks } from "./getBackLinks";
 
 export function autoDefinitionLinkPostProcessor(el: HTMLElement, _ctx: MarkdownPostProcessorContext, app: App) {
     if (!AutoDefinitionLink.settings.realTimeLinking) return;
+    const activeDocument = el.ownerDocument;
+    const activeWindow = activeDocument.defaultView ?? window;
+    const isHTMLElement = (node: Node): node is HTMLElement => Boolean((node as HTMLElement).instanceOf?.(HTMLElement));
 
     function generateBacklinksDiv() {
         const div = createDiv();
@@ -111,7 +114,7 @@ export function autoDefinitionLinkPostProcessor(el: HTMLElement, _ctx: MarkdownP
         const children = Array.from(element.childNodes);
 
         children.forEach(child => {
-            if ((child as HTMLElement).instanceOf?.(HTMLElement) && (child as HTMLElement).hasClass('internal-link')) return;
+            if (isHTMLElement(child) && child.hasClass('internal-link')) return;
 
             if (child.nodeType === Node.TEXT_NODE) {
                 if (!child.textContent) return;
@@ -119,7 +122,7 @@ export function autoDefinitionLinkPostProcessor(el: HTMLElement, _ctx: MarkdownP
                 return texts[child.textContent] = child;
             }
 
-            if (!(child as HTMLElement).instanceOf?.(HTMLElement)) return;
+            if (!isHTMLElement(child)) return;
 
             texts = {
                 ...texts,

@@ -1,6 +1,6 @@
 import { autoDefinitionLinkEditorExtension } from "src/editorExtension";
 import { TERMSPLITTERS, SuggestionData, LinkDestination, BLOCKIDREGEX, normalizeId, VALIDINTERRUPTERS } from "src/shared";
-import { activeDocument, Editor, EditorPosition, Plugin } from "obsidian";
+import { Editor, EditorPosition, Plugin } from "obsidian";
 import { _updateBlockIds, updateBlockIds } from "src/updateBlockIds";
 import { AutoDefinitionLinkSuggest } from "src/suggestions";
 import { AutoDefinitionLinkSettingTab, AutoDefinitionLinkSettings, DEFAULT_SETTINGS } from "src/settings";
@@ -83,6 +83,7 @@ export default class AutoDefinitionLink extends Plugin {
         AutoDefinitionLink.statusBarEl = this.addStatusBarItem().createSpan({ text: 'Starting up...' });
 
         await this.loadSettings();
+        const activeDocument = this.app.workspace.containerEl.ownerDocument;
 
         // *** start add refresh button ***
         const refreshButton = this.addStatusBarItem();
