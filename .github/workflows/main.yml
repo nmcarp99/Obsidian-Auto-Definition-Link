@@ -1,0 +1,42 @@
+name: Plugin release
+
+on:
+    push:
+        tags:
+            - '**'
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write
+            contents: write
+            attestations: write
+            artifact-metadata: write
+        steps:
+            - uses: actions/checkout@v5
+
+            - name: Use NPM
+              uses: Jaid/action-npm-install@v1.2.4
+
+            - name: Build plugin
+              run: npm run build
+
+            - name: Generate artifact attestation
+              uses: actions/attest-build-provenance@v4.1.0
+              with:
+                  subject-path: |
+                      main.js
+                      styles.css
+
+            - name: Create zip archive
+              run: |
+                  zip -j auto-definition-link-obsidian.zip main.js manifest.json styles.css
+            - name: Create release
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  tag="${GITHUB_REF#refs/tags/}"
+                  gh release create "$tag" \
+                    --title="$tag" \
+                    main.js manifest.json styles.css auto-definition-link-obsidian.zip
